@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RizzBot Connect
 // @namespace    https://rizzbotproject.vercel.app
-// @version      1.14.1
+// @version      1.14.2
 // @author       rizzbotdev
 // @description  Bring girls into RizzBot from the sites you use in your browser. Instagram: add her from her profile, with your chat. Reads only what you can see; never likes, follows or views a story. Tinder: a status badge on every match and chat, chats synced by themselves, and one-press import. Reads only what Tinder already loaded; never sends Tinder a request or presses its buttons.
 // @license      UNLICENSED
@@ -3374,22 +3374,9 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			retry: !(status === 400 || status === 413)
 		};
 	}
-	var WORDS = [
-		"no",
-		"one",
-		"two",
-		"three",
-		"four",
-		"five",
-		"six",
-		"seven",
-		"eight",
-		"nine",
-		"ten"
-	];
 	var capital = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 	function plural(n, word) {
-		return `${WORDS[n] ?? n} ${word}${n === 1 ? "" : "s"}`;
+		return `${n === 0 ? "no" : n} ${word}${n === 1 ? "" : "s"}`;
 	}
 	var MAX_BODY = 8388608;
 	var PATHS = [
