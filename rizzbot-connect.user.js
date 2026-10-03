@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RizzBot Connect
 // @namespace    https://rizzbotproject.vercel.app
-// @version      1.14.2
+// @version      1.15.0
 // @author       rizzbotdev
 // @description  Bring girls into RizzBot from the sites you use in your browser. Instagram: add her from her profile, with your chat. Reads only what you can see; never likes, follows or views a story. Tinder: a status badge on every match and chat, chats synced by themselves, and one-press import. Reads only what Tinder already loaded; never sends Tinder a request or presses its buttons.
 // @license      UNLICENSED
@@ -10,20 +10,22 @@
 // @supportURL   https://github.com/rizzbotdev/rizzbot-connect/issues
 // @downloadURL  https://github.com/rizzbotdev/rizzbot-connect/releases/latest/download/rizzbot-connect.user.js
 // @updateURL    https://github.com/rizzbotdev/rizzbot-connect/releases/latest/download/rizzbot-connect.meta.js
-// @include      /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/recorder\/connect/
+// @include      /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//
 // @match        https://www.instagram.com/*
 // @match        https://tinder.com/*
-// @match        https://rizzbotproject.vercel.app/recorder/connect*
+// @match        https://rizzbotproject.vercel.app/*
 // @sandbox      raw
 // @connect      rizzbotproject.vercel.app
 // @connect      localhost
 // @connect      127.0.0.1
+// @grant        GM_addValueChangeListener
 // @grant        GM_deleteValue
 // @grant        GM_getValue
 // @grant        GM_info
 // @grant        GM_openInTab
 // @grant        GM_registerMenuCommand
 // @grant        GM_setValue
+// @grant        GM_unregisterMenuCommand
 // @grant        GM_xmlhttpRequest
 // @inject-into  page
 // @run-at       document-start
@@ -42,12 +44,14 @@
 		if (!no_symbols) __defProp(target, Symbol.toStringTag, { value: "Module" });
 		return target;
 	};
+	var _GM_addValueChangeListener = (() => typeof GM_addValueChangeListener != "undefined" ? GM_addValueChangeListener : void 0)();
 	var _GM_deleteValue = (() => typeof GM_deleteValue != "undefined" ? GM_deleteValue : void 0)();
 	var _GM_getValue = (() => typeof GM_getValue != "undefined" ? GM_getValue : void 0)();
 	var _GM_info = (() => typeof GM_info != "undefined" ? GM_info : void 0)();
 	var _GM_openInTab = (() => typeof GM_openInTab != "undefined" ? GM_openInTab : void 0)();
 	var _GM_registerMenuCommand = (() => typeof GM_registerMenuCommand != "undefined" ? GM_registerMenuCommand : void 0)();
 	var _GM_setValue = (() => typeof GM_setValue != "undefined" ? GM_setValue : void 0)();
+	var _GM_unregisterMenuCommand = (() => typeof GM_unregisterMenuCommand != "undefined" ? GM_unregisterMenuCommand : void 0)();
 	var _GM_xmlhttpRequest = (() => typeof GM_xmlhttpRequest != "undefined" ? GM_xmlhttpRequest : void 0)();
 	var _unsafeWindow = (() => typeof unsafeWindow != "undefined" ? unsafeWindow : void 0)();
 	var jsonParse = JSON.parse;
@@ -288,14 +292,168 @@
 				})
 			});
 		}),
-		openTab: (url) => {
-			_GM_openInTab(url, { active: true });
+		openTab: (url, opts) => {
+			_GM_openInTab(url, {
+				active: !opts?.background,
+				insert: true
+			});
 		},
-		menu: (label, fn) => {
-			_GM_registerMenuCommand(label, fn);
+		menu: (label, fn) => _GM_registerMenuCommand(label, fn),
+		unmenu: (id) => {
+			if (typeof _GM_unregisterMenuCommand === "function" && id !== void 0 && id !== null) _GM_unregisterMenuCommand(id);
+		},
+		onChange: (key, fn) => {
+			if (typeof _GM_addValueChangeListener !== "function") return;
+			_GM_addValueChangeListener(key, (_name, _old, value, remote) => {
+				if (remote) fn(value);
+			});
 		},
 		version: _GM_info?.script?.version ?? "dev"
 	};
+	var FOLLOW_KEYS = {
+		on: "followChats",
+		target: "followTarget",
+		leader: "followLeader",
+		opened: "followOpenedAt"
+	};
+	var followTiming = {
+		beatMs: 4e3,
+		staleMs: 12e3,
+		freshMs: 15e3,
+		openCooldownMs: 15e3,
+		ackMs: 400
+	};
+	var FOLLOW_MSG = {
+		navigate: "rizzbot-connect:navigate",
+		navigated: "rizzbot-connect:navigated"
+	};
+	function followEnabled(host) {
+		return rawHost(host).get(FOLLOW_KEYS.on, false) === true;
+	}
+	function setFollow(host, on) {
+		rawHost(host).set(FOLLOW_KEYS.on, on);
+	}
+	function isFollowUrl(url, origin) {
+		let u;
+		try {
+			u = new URL(url);
+		} catch {
+			return false;
+		}
+		return u.origin === origin && isAllowedOrigin(origin) && /^\/chats\/[^/]+$/.test(u.pathname) && (u.search === "" || u.search === "?review=tinder") && u.hash === "";
+	}
+	function leaderOf(host) {
+		const l = rawHost(host).get(FOLLOW_KEYS.leader, null);
+		return l && typeof l.id === "string" && typeof l.at === "number" ? l : null;
+	}
+	function alive(l, now) {
+		return !!l && now - l.at < followTiming.staleMs;
+	}
+	function followChat(host, url, now = Date.now()) {
+		if (!followEnabled(host)) return "off";
+		const raw = rawHost(host);
+		if (!isFollowUrl(url, currentOrigin(host))) return "refused";
+		raw.set(FOLLOW_KEYS.target, {
+			url,
+			at: now
+		});
+		if (alive(leaderOf(host), now)) return "moved";
+		const opened = raw.get(FOLLOW_KEYS.opened, 0);
+		if (typeof opened === "number" && now - opened < followTiming.openCooldownMs) return "moved";
+		raw.set(FOLLOW_KEYS.opened, now);
+		host.openTab(url, { background: true });
+		return "opened";
+	}
+	function installFollowMenu(host, alert, onToggle = () => {}) {
+		let id;
+		const draw = () => {
+			if (id !== void 0) host.unmenu(id);
+			id = host.menu(`RizzBot tab follows the chat I open: ${followEnabled(host) ? "on" : "off"}`, () => {
+				const on = !followEnabled(host);
+				setFollow(host, on);
+				draw();
+				onToggle(on);
+				alert(on ? "On. Open a chat on Tinder and a RizzBot tab moves to her page (girls already in RizzBot). Keep one RizzBot tab open, ideally in its own window beside Tinder; if none is open, one opens behind your tab." : "Off. RizzBot tabs stay where they are.");
+			});
+		};
+		draw();
+	}
+	function runFollower(host, win, clock = () => Date.now()) {
+		const origin = win.location.origin;
+		const noop = {
+			start() {},
+			stop() {}
+		};
+		if (!isAllowedOrigin(origin) || origin !== currentOrigin(host)) return noop;
+		const raw = rawHost(host);
+		const me = Math.random().toString(36).slice(2) + clock().toString(36);
+		let timer = null;
+		let seq = 0;
+		const claim = () => raw.set(FOLLOW_KEYS.leader, {
+			id: me,
+			at: clock()
+		});
+		const leading = () => leaderOf(host)?.id === me;
+		const go = (t) => {
+			if (!followEnabled(host) || !leading()) return;
+			const target = t;
+			if (!target || typeof target.url !== "string" || typeof target.at !== "number") return;
+			if (clock() - target.at > followTiming.freshMs) return;
+			if (!isFollowUrl(target.url, origin)) return;
+			const u = new URL(target.url);
+			if (win.location.pathname + win.location.search === u.pathname + u.search) return;
+			const id = `${me}-${++seq}`;
+			let done = false;
+			const onMsg = (e) => {
+				const d = e.data;
+				if (e.source === win && e.origin === origin && d?.type === FOLLOW_MSG.navigated && d.id === id) done = true;
+			};
+			win.addEventListener("message", onMsg);
+			win.postMessage({
+				type: FOLLOW_MSG.navigate,
+				path: u.pathname + u.search,
+				id
+			}, origin);
+			win.setTimeout(() => {
+				win.removeEventListener("message", onMsg);
+				if (!done) win.location.assign(target.url);
+			}, followTiming.ackMs);
+		};
+		const start = () => {
+			if (timer !== null) return;
+			if (!alive(leaderOf(host), clock()) || win.document.visibilityState === "visible") claim();
+			go(raw.get(FOLLOW_KEYS.target, null));
+			timer = win.setInterval(() => {
+				if (leading()) claim();
+				else if (!alive(leaderOf(host), clock())) {
+					claim();
+					go(raw.get(FOLLOW_KEYS.target, null));
+				}
+			}, followTiming.beatMs);
+		};
+		const stop = () => {
+			if (timer !== null) win.clearInterval(timer);
+			timer = null;
+			if (leading()) raw.del(FOLLOW_KEYS.leader);
+		};
+		const onFocus = () => {
+			if (timer !== null) claim();
+		};
+		raw.onChange(FOLLOW_KEYS.target, go);
+		raw.onChange(FOLLOW_KEYS.on, (v) => v === true ? start() : stop());
+		win.addEventListener("focus", onFocus);
+		win.document.addEventListener("visibilitychange", () => {
+			if (win.document.visibilityState === "visible") onFocus();
+		});
+		win.addEventListener("pagehide", () => {
+			if (leading()) raw.del(FOLLOW_KEYS.leader);
+		});
+		if (followEnabled(host)) start();
+		return {
+			start,
+			stop
+		};
+	}
 	var site_default$1 = {
 		id: "instagram",
 		name: "Instagram",
@@ -3687,6 +3845,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 		const importing = new Map();
 		let held = false;
 		let openedAt = Date.now();
+		let followed = null;
 		let syncing = false;
 		let syncTimer = null;
 		let lastSync = 0;
@@ -3894,8 +4053,15 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			}
 		}
 		function refresh() {
+			follow();
 			if (held) return;
 			panel.render(idle());
+		}
+		function follow() {
+			const open = matchFromPath(win.location.pathname);
+			const slug = open ? badges.get(open)?.slug : null;
+			if (!open || !slug || followed === open) return;
+			if (followChat(host, girlUrl(createApi(host).origin, slug)) !== "off") followed = open;
 		}
 		const release = () => {
 			held = false;
@@ -4112,6 +4278,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			refresh();
 			onUrlChange(win, () => {
 				openedAt = Date.now();
+				followed = null;
 				if (!panel.isWorking()) held = false;
 				refresh();
 				win.setTimeout(refresh, timing.graceMs + 100);
@@ -4152,8 +4319,10 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				if (!isAllowedOrigin(origin)) return Promise.reject(new HostScopeError(`a site may only send to RizzBot, not ${req.url.slice(0, 80)}`));
 				return host.request(req);
 			},
-			openTab: (url) => host.openTab(url),
+			openTab: (url, opts) => host.openTab(url, opts),
 			menu: (label, fn) => host.menu(label, fn),
+			unmenu: (id) => host.unmenu(id),
+			onChange: (key, fn) => (check(key), host.onChange(key, fn)),
 			version: host.version
 		};
 		registerScoped(scoped, host);
@@ -4272,4 +4441,6 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 	var site = siteFor(win.location.href);
 	if (site) startSite(site, host, win);
 	else if (isConnectPage(win.location)) runConnectPage(host, win);
+	var follower = !site && !isConnectPage(win.location) && isAllowedOrigin(win.location.origin) ? runFollower(host, win) : null;
+	installFollowMenu(host, (t) => win.alert(t), (on) => on ? follower?.start() : follower?.stop());
 })();
