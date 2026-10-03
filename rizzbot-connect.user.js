@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RizzBot Connect
 // @namespace    https://rizzbotproject.vercel.app
-// @version      1.13.0
+// @version      1.14.0
 // @author       rizzbotdev
 // @description  Bring girls into RizzBot from the sites you use in your browser. Instagram: add her from her profile, with your chat. Reads only what you can see; never likes, follows or views a story. Tinder: a status badge on every match and chat, chats synced by themselves, and one-press import. Reads only what Tinder already loaded; never sends Tinder a request or presses its buttons.
 // @license      UNLICENSED
@@ -2616,7 +2616,35 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 .muted .dot { background: #52525b; }
 .spin { width: 8px; height: 8px; border: 2px solid rgb(59 130 246 / .3); border-top-color: #3b82f6; border-radius: 50%; animation: s .8s linear infinite; flex: none; }
 @keyframes s { to { transform: rotate(360deg); } }
+.ring { position: absolute; inset: -4px; border: 3px solid var(--c); border-radius: calc(var(--r) + 4px); box-sizing: border-box; pointer-events: none; }
+.ring.in { inset: 0; border-radius: var(--r); }
+.ring.dash { border-style: dashed; }
+.chip.mini {
+  position: absolute; right: var(--k); bottom: var(--k); width: 24px; height: 24px; padding: 0; gap: 0; justify-content: center;
+  border-radius: 50%; background: var(--c); color: #fff; border: 3px solid var(--bg); box-sizing: border-box; pointer-events: auto; box-shadow: none;
+}
+.chip.mini svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.chip.mini .spin { width: 9px; height: 9px; border-color: rgb(255 255 255 / .35); border-top-color: #fff; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 `;
+	var TONE = {
+		green: "#22c55e",
+		rose: "#f43f5e",
+		blue: "#3b82f6",
+		amber: "#f59e0b",
+		red: "#ef4444",
+		muted: "#6b7078",
+		grey: "#a1a1aa"
+	};
+	var ICON = {
+		check: ["M20 6 9 17l-5-5"],
+		plus: ["M12 5v14", "M5 12h14"],
+		down: ["M12 5v14", "m19 12-7 7-7-7"],
+		alert: ["M12 8v5", "M12 17h.01"],
+		chat: ["M7.9 20A9 9 0 1 0 4 16.1L2 22z"],
+		clock: ["M12 7v5l3 2"]
+	};
+	var SVG_NS = "http://www.w3.org/2000/svg";
 	var Marks = class {
 		doc;
 		find;
@@ -2647,6 +2675,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 					attributeFilter: ["href"]
 				});
 			}
+			win.addEventListener("resize", () => this.schedule());
 			this.apply();
 		}
 		stop() {
@@ -2691,7 +2720,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				const style = t.style ?? DEFAULT_STYLE;
 				if (live.host.getAttribute("style") !== style) live.host.setAttribute("style", style);
 				if (live.host.parentElement !== t.node || live.host !== t.node.lastElementChild) t.node.appendChild(live.host);
-				this.draw(live, spec);
+				this.draw(live, spec, t.ring);
 			}
 			for (const h of Array.from(this.hosts)) {
 				if (keep.has(h)) continue;
@@ -2722,26 +2751,65 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			this.hosts.add(host);
 			return live;
 		}
-		draw(live, spec) {
+		draw(live, spec, ring) {
 			live.click = spec.onClick;
 			const sig = signatureOf([
 				spec.label,
 				spec.tone,
 				spec.title ?? "",
 				!!spec.busy,
-				!!spec.onClick
+				!!spec.onClick,
+				spec.icon ?? "",
+				!!spec.dashed,
+				ring ? [
+					ring.radius,
+					!!ring.inset,
+					ring.bg ?? "",
+					ring.corner ?? -3
+				] : null
 			]);
 			if (sig === live.sig) return;
 			live.sig = sig;
 			const chip = this.doc.createElement(spec.onClick ? "button" : "span");
-			chip.className = `chip ${spec.tone}`;
-			const dot = this.doc.createElement("span");
-			dot.className = spec.busy ? "spin" : "dot";
-			chip.appendChild(dot);
-			const text = this.doc.createElement("span");
-			text.textContent = spec.label;
-			chip.appendChild(text);
-			if (spec.title) chip.title = spec.title;
+			const parts = [];
+			if (ring) {
+				const r = this.doc.createElement("span");
+				r.className = `ring${ring.inset ? " in" : ""}${spec.dashed ? " dash" : ""}`;
+				parts.push(r);
+				chip.className = `chip mini ${spec.tone}`;
+				if (spec.busy) {
+					const sp = this.doc.createElement("span");
+					sp.className = "spin";
+					chip.appendChild(sp);
+				} else if (spec.icon) {
+					const svg = this.doc.createElementNS(SVG_NS, "svg");
+					svg.setAttribute("viewBox", "0 0 24 24");
+					svg.setAttribute("aria-hidden", "true");
+					for (const d of ICON[spec.icon]) {
+						const path = this.doc.createElementNS(SVG_NS, "path");
+						path.setAttribute("d", d);
+						svg.appendChild(path);
+					}
+					chip.appendChild(svg);
+				}
+				const sr = this.doc.createElement("span");
+				sr.className = "sr";
+				sr.textContent = spec.label;
+				chip.appendChild(sr);
+				live.wrap.setAttribute("style", `position:absolute;inset:0;--c:${TONE[spec.tone]};--r:${Math.max(0, ring.radius)}px;--bg:${ring.bg ?? "#111"};--k:${ring.inset ? 5 : ring.corner ?? -3}px`);
+			} else {
+				live.wrap.removeAttribute("style");
+				chip.className = `chip ${spec.tone}`;
+				const dot = this.doc.createElement("span");
+				dot.className = spec.busy ? "spin" : "dot";
+				chip.appendChild(dot);
+				const text = this.doc.createElement("span");
+				text.textContent = spec.label;
+				chip.appendChild(text);
+			}
+			chip.title = spec.title ? `${spec.label}. ${spec.title}` : spec.label;
+			if (!ring) chip.title = spec.title ?? "";
+			if (!ring && !spec.title) chip.removeAttribute("title");
 			if (spec.onClick) {
 				chip.type = "button";
 				const stop = (e) => {
@@ -2755,7 +2823,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 					live.click?.();
 				});
 			}
-			live.wrap.replaceChildren(chip);
+			live.wrap.replaceChildren(...parts, chip);
 		}
 	};
 	var HEX24 = /^[0-9a-f]{24}$/;
@@ -3175,6 +3243,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				label: "Importing",
 				tone: "blue",
 				busy: true,
+				icon: "plus",
 				title: "RizzBot is importing her."
 			},
 			action: null
@@ -3185,6 +3254,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				label: "Syncing",
 				tone: "blue",
 				busy: true,
+				icon: "check",
 				title: "Sending her newest messages to RizzBot."
 			},
 			action: null
@@ -3193,7 +3263,9 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			case "not-imported": return {
 				spec: {
 					label: "Import",
-					tone: "grey",
+					tone: "rose",
+					icon: "plus",
+					dashed: true,
 					title: "Not in RizzBot yet. Open her, then press Import."
 				},
 				action: "import"
@@ -3202,6 +3274,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				spec: {
 					label: s.tile ? "In RizzBot" : "Synced",
 					tone: "green",
+					icon: "check",
 					title: b.added ? `${capital(plural(b.added, "new message"))} added to RizzBot. Press to open her there.` : "RizzBot has every message. Press to open her there."
 				},
 				action: b.slug ? "open" : null
@@ -3210,6 +3283,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				spec: {
 					label: "Outdated",
 					tone: "amber",
+					icon: "down",
 					title: b.why ?? "Tinder has messages RizzBot does not. Open her chat to sync them."
 				},
 				action: null
@@ -3218,6 +3292,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				spec: {
 					label: "Mismatch",
 					tone: "red",
+					icon: "alert",
 					title: `${b.why ?? "RizzBot and Tinder disagree about her chat."} Press to review it in RizzBot.`
 				},
 				action: b.slug ? "review" : null
@@ -3226,6 +3301,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				spec: {
 					label: `On ${APP[b.platform ?? ""] ?? "another app"}`,
 					tone: "muted",
+					icon: "chat",
 					title: "Her chat moved off Tinder, so RizzBot Connect leaves it alone."
 				},
 				action: b.slug ? "open" : null
@@ -3234,6 +3310,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				spec: {
 					label: "Busy",
 					tone: "muted",
+					icon: "clock",
 					title: `${b.why ?? "Something is running for her in RizzBot. Her chat syncs once it ends."}${b.slug ? " Press to open her in RizzBot." : ""}`
 				},
 				action: b.slug ? "open" : null
@@ -3420,29 +3497,129 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 	}
 	var ROW_STYLE = "position:absolute;top:2px;right:10px;z-index:5;pointer-events:auto";
 	var TILE_STYLE = "position:absolute;top:6px;right:6px;z-index:5;pointer-events:auto";
+	var TILE_REACH = 8;
 	var CHECKED = new WeakSet();
+	var AVATAR = new WeakMap();
+	var LOOK = new WeakMap();
+	function positioned(el, view) {
+		if (CHECKED.has(el)) return;
+		CHECKED.add(el);
+		const h = el;
+		if (view.getComputedStyle(h).position === "static" && h.style.position !== "relative") h.style.position = "relative";
+	}
+	function radiusOf(el, view, width) {
+		const r = view.getComputedStyle(el).borderTopLeftRadius || "0";
+		const n = parseFloat(r);
+		if (!Number.isFinite(n)) return 0;
+		return r.trim().endsWith("%") ? width * n / 100 : n;
+	}
+	function backgroundOf(el, view) {
+		for (let n = el; n; n = n.parentElement) {
+			const c = view.getComputedStyle(n).backgroundColor;
+			if (c && c !== "transparent" && !/rgba\(.*,\s*0\)$/.test(c)) return c;
+		}
+		return "#111418";
+	}
+	function avatarOf(row, view) {
+		const had = AVATAR.get(row);
+		if (had && had.isConnected && row.contains(had)) return had;
+		let best = null;
+		let bestW = 0;
+		for (const el of Array.from(row.querySelectorAll("*"))) {
+			const b = el.getBoundingClientRect();
+			if (b.width < 36 || b.width > 140 || Math.abs(b.width - b.height) > 3 || b.width <= bestW) continue;
+			if (radiusOf(el, view, b.width) < b.width * .4) continue;
+			best = el;
+			bestW = b.width;
+		}
+		if (best) AVATAR.set(row, best);
+		return best;
+	}
+	var CLIPS = /^(hidden|auto|scroll|clip|overlay)$/;
+	function clipperOf(el, view) {
+		for (let n = el.parentElement; n && n !== el.ownerDocument.body; n = n.parentElement) {
+			const cs = view.getComputedStyle(n);
+			if (CLIPS.test(cs.overflowX) || CLIPS.test(cs.overflowY)) return n;
+		}
+		return null;
+	}
+	var px = (n) => `${Math.round(n * 10) / 10}px`;
+	var boxStyle = (box, mount, m) => `position:absolute;left:${px(box.left - mount.left - m.clientLeft)};top:${px(box.top - mount.top - m.clientTop)};width:${px(box.width)};height:${px(box.height)};z-index:5;pointer-events:none`;
 	function rowTargets(doc) {
 		const out = [];
 		const base = doc.location?.href ?? "https://tinder.com/";
 		const view = doc.defaultView;
-		const add = (selector, style) => {
-			for (const a of Array.from(doc.querySelectorAll(selector))) {
-				const id = matchOfLink(a, base);
-				if (!id) continue;
-				const el = a;
-				if (!CHECKED.has(el)) {
-					CHECKED.add(el);
-					if (view && view.getComputedStyle(el).position === "static" && el.style.position !== "relative") el.style.position = "relative";
-				}
+		for (const a of Array.from(doc.querySelectorAll("a.messageListItem"))) {
+			const id = matchOfLink(a, base);
+			if (!id || !view) continue;
+			positioned(a, view);
+			const av = avatarOf(a, view);
+			if (!av) {
 				out.push({
 					id,
 					node: a,
-					style
+					style: ROW_STYLE
+				});
+				continue;
+			}
+			const box = av.getBoundingClientRect();
+			let look = LOOK.get(av);
+			if (!look) LOOK.set(av, look = {
+				radius: radiusOf(av, view, box.width),
+				bg: backgroundOf(a, view),
+				clip: null
+			});
+			out.push({
+				id,
+				node: a,
+				style: boxStyle(box, a.getBoundingClientRect(), a),
+				ring: {
+					radius: look.radius,
+					bg: look.bg,
+					corner: -3
+				}
+			});
+		}
+		for (const a of Array.from(doc.querySelectorAll("a.matchListItem"))) {
+			const id = matchOfLink(a, base);
+			if (!id || !view) continue;
+			const box = a.getBoundingClientRect();
+			if (!box.width || !box.height) {
+				positioned(a, view);
+				out.push({
+					id,
+					node: a,
+					style: TILE_STYLE
+				});
+				continue;
+			}
+			const own = view.getComputedStyle(a);
+			const mount = CLIPS.test(own.overflowX) || CLIPS.test(own.overflowY) ? a.parentElement ?? a : a;
+			positioned(mount, view);
+			let look = LOOK.get(a);
+			if (!look) {
+				const photo = a.firstElementChild;
+				const radius = Math.max(radiusOf(a, view, box.width), photo ? radiusOf(photo, view, box.width) : 0);
+				LOOK.set(a, look = {
+					radius,
+					bg: backgroundOf(mount, view),
+					clip: clipperOf(mount, view)
 				});
 			}
-		};
-		add("a.messageListItem", ROW_STYLE);
-		add("a.matchListItem", TILE_STYLE);
+			const c = look.clip?.getBoundingClientRect();
+			const inset = !!c && (box.top - TILE_REACH < c.top || box.bottom + TILE_REACH > c.bottom);
+			out.push({
+				id,
+				node: mount,
+				style: boxStyle(box, mount.getBoundingClientRect(), mount),
+				ring: {
+					radius: look.radius,
+					bg: look.bg,
+					inset,
+					corner: -7
+				}
+			});
+		}
 		return out;
 	}
 	function scrapePanel(doc) {
