@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RizzBot Connect
 // @namespace    https://rizzbotproject.vercel.app
-// @version      1.14.0
+// @version      1.14.1
 // @author       rizzbotdev
 // @description  Bring girls into RizzBot from the sites you use in your browser. Instagram: add her from her profile, with your chat. Reads only what you can see; never likes, follows or views a story. Tinder: a status badge on every match and chat, chats synced by themselves, and one-press import. Reads only what Tinder already loaded; never sends Tinder a request or presses its buttons.
 // @license      UNLICENSED
@@ -3682,6 +3682,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 		busyRetryMs: 3e4,
 		importRecheckMs: 2e4,
 		graceMs: 6e3,
+		uploadMs: 500,
 		importDeadlineMs: 3e5
 	};
 	var SYNC_CHUNK = {
@@ -3981,14 +3982,32 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				});
 				return;
 			}
-			held = false;
+			held = true;
 			importing.set(matchId, {
 				slug: null,
 				since: Date.now()
 			});
 			drawChips();
-			refresh();
 			const api = createApi(host);
+			const title = `Adding ${name}`;
+			const started = Date.now();
+			let bar = true;
+			const tick = () => {
+				if (!bar) return;
+				const f = Math.min(1, (Date.now() - started) / timing.uploadMs);
+				panel.show({
+					kind: "card",
+					title,
+					text: [],
+					icon: "spin",
+					progress: {
+						value: .05 + .9 * f,
+						step: f < .5 ? "Reading her profile" : "Sending to RizzBot"
+					}
+				});
+				if (f < 1) win.setTimeout(tick, 50);
+			};
+			tick();
 			let end;
 			try {
 				end = importEnd(200, await api.call("POST", "/api/girls/from-tinder-web", onExisting ? {
@@ -3998,20 +4017,40 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			} catch (e) {
 				end = e instanceof ApiError ? importEnd(e.status, e.body, e.message) : importEnd(0, null, e instanceof Error ? e.message : "Something went wrong.");
 			}
-			held = true;
+			const rest = timing.uploadMs - (Date.now() - started);
+			if (rest > 0) await new Promise((r) => win.setTimeout(r, rest));
+			bar = false;
 			if (end.kind === "started") {
 				importing.set(matchId, {
 					slug: end.slug,
 					since: Date.now()
 				});
+				const photos = Array.isArray(payload.user?.photos) ? payload.user.photos.length : 0;
+				const messages = Array.isArray(payload.messages) ? payload.messages.length : 0;
 				panel.show({
 					kind: "card",
-					icon: "ok",
 					tone: "ok",
-					title: `${name} is on her way to RizzBot`,
-					text: ["RizzBot is reading her profile and her chat. Her page fills in by itself."],
+					icon: "ok",
+					title: "Upload complete",
+					text: [`RizzBot is ${onExisting === "chat" ? "syncing" : "importing"} ${name} now.`],
+					checklist: [
+						...onExisting === "chat" ? [] : [{
+							label: "Her profile",
+							detail: photos ? plural(photos, "photo") : "profile",
+							state: "done"
+						}],
+						{
+							label: "Your chat",
+							detail: messages ? plural(messages, "message") : "no messages yet",
+							state: "done"
+						},
+						{
+							label: onExisting === "chat" ? "Syncing in RizzBot" : "Importing in RizzBot",
+							state: "running"
+						}
+					],
 					link: {
-						label: "Open her in RizzBot",
+						label: "Open in RizzBot",
 						icon: "open",
 						first: true,
 						href: girlUrl(api.origin, end.slug)
