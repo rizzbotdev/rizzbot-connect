@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RizzBot Connect
 // @namespace    https://rizzbotproject.vercel.app
-// @version      1.16.0
+// @version      1.17.0
 // @author       rizzbotdev
 // @description  Bring girls into RizzBot from the sites you use in your browser. Instagram: add her from her profile, with your chat, and draft replies to the story or post you are looking at. Reads only what you can see; never likes, follows or opens a story for you. Tinder: a status badge on every match and chat, chats synced by themselves, and one-press import. Reads only what Tinder already loaded; never sends Tinder a request or presses its buttons.
 // @license      UNLICENSED
@@ -1558,20 +1558,20 @@ a.tlink svg { width: 13px; height: 13px; }
 			this.o.onChange();
 		}
 	};
-	var HANDLE = "[A-Za-z0-9._]{1,30}";
+	var HANDLE$1 = "[A-Za-z0-9._]{1,30}";
 	function storyFromPath(pathname) {
 		let m = new RegExp(`^/stories/highlights/(\\d{1,40})/?`).exec(pathname);
 		if (m) return {
 			kind: "highlight",
 			highlight: m[1]
 		};
-		m = new RegExp(`^/stories/(${HANDLE})(?:/(\\d{1,40}))?/?$`).exec(pathname);
+		m = new RegExp(`^/stories/(${HANDLE$1})(?:/(\\d{1,40}))?/?$`).exec(pathname);
 		if (m && m[1].toLowerCase() !== "highlights") return {
 			kind: "story",
 			user: m[1].toLowerCase(),
 			item: m[2] ?? null
 		};
-		m = new RegExp(`^/(?:(${HANDLE})/)?(?:p|reel)/([A-Za-z0-9_-]{5,40})/?$`).exec(pathname);
+		m = new RegExp(`^/(?:(${HANDLE$1})/)?(?:p|reel)/([A-Za-z0-9_-]{5,40})/?$`).exec(pathname);
 		if (m) return {
 			kind: "post",
 			code: m[2],
@@ -1918,16 +1918,10 @@ a.tlink svg { width: 13px; height: 13px; }
 			this.name = "GuardError";
 		}
 	};
-	var ALLOWED = [
-		/^\/api\/v1\/feed\/reels_media\/\?reel_ids=highlight%3A\d{1,25}(?:&reel_ids=highlight%3A\d{1,25}){0,9}$/,
-		/^\/api\/v1\/direct_v2\/threads\/\d{1,40}\/\?limit=50$/,
-		/^\/api\/v1\/direct_v2\/threads\/\d{1,40}\/\?cursor=[A-Za-z0-9_%=-]{1,600}&direction=older&limit=50$/,
-		/^\/api\/v1\/direct_v2\/inbox\/\?limit=40$/,
-		/^\/api\/v1\/direct_v2\/inbox\/\?cursor=[A-Za-z0-9_%=-]{1,600}&direction=older&limit=40$/
-	];
-	var FORBIDDEN = /seen|follow|friendship|like|comment|\/stories?\/|\/reel\/|create|delete|edit|block|report|mute|broadcast|\/items\/|approve|decline|hide|leave|direct_v2\/(?!threads\/\d{1,40}\/\?|inbox\/\?)|media\/\d+\/(?!$)/i;
+	var ALLOWED = [/^\/api\/v1\/feed\/reels_media\/\?reel_ids=highlight%3A\d{1,25}(?:&reel_ids=highlight%3A\d{1,25}){0,9}$/];
+	var FORBIDDEN = /seen|follow|friendship|like|comment|\/stories?\/|\/reel\/|create|delete|edit|block|report|mute|broadcast|\/items\/|approve|decline|hide|leave|direct_v2|media\/\d+\/(?!$)/i;
 	function hasForbiddenWord(path) {
-		return FORBIDDEN.test(path.replace(/([?&]cursor=)[^&]*/, "$1"));
+		return FORBIDDEN.test(path);
 	}
 	function isAllowedPath(path) {
 		return ALLOWED.some((r) => r.test(path)) && !hasForbiddenWord(path);
@@ -1939,17 +1933,6 @@ a.tlink svg { width: 13px; height: 13px; }
 		if (!ids.length || ids.length > 10) throw new GuardError(`reels_media with ${ids.length} ids`);
 		for (const id of ids) if (!/^highlight:\d{1,25}$/.test(id)) throw new GuardError(`reel id ${id}`);
 		const path = "/api/v1/feed/reels_media/?" + ids.map((id) => "reel_ids=" + encodeURIComponent(id)).join("&");
-		assertAllowed(path);
-		return path;
-	}
-	function threadPath(threadId, cursor) {
-		if (!/^\d{1,40}$/.test(threadId)) throw new GuardError(`thread ${threadId}`);
-		const path = `/api/v1/direct_v2/threads/${threadId}/?` + (cursor ? `cursor=${encodeURIComponent(cursor)}&direction=older&limit=50` : "limit=50");
-		assertAllowed(path);
-		return path;
-	}
-	function inboxPath(cursor) {
-		const path = "/api/v1/direct_v2/inbox/?" + (cursor ? `cursor=${encodeURIComponent(cursor)}&direction=older&limit=40` : "limit=40");
 		assertAllowed(path);
 		return path;
 	}
@@ -2275,20 +2258,26 @@ a.tlink svg { width: 13px; height: 13px; }
 			win.removeEventListener("popstate", check);
 		};
 	}
-	var CHAT_MARK = "__rizzbot_instagram_chat__";
-	var HEART = /^\u2764\ufe0f?$/;
-	function heartedByOther(item, author, mine, viewerId) {
-		const r = isObj(item.reactions) ? item.reactions : null;
-		if (!r) return false;
-		const senders = [];
-		for (const e of Array.isArray(r.emojis) ? r.emojis : []) if (isObj(e) && typeof e.emoji === "string" && HEART.test(e.emoji.trim()) && e.sender_id != null) senders.push(String(e.sender_id));
-		for (const l of Array.isArray(r.likes) ? r.likes : []) if (isObj(l) && l.sender_id != null) senders.push(String(l.sender_id));
-		return senders.some((sid) => {
-			if (author) return sid !== author;
-			if (viewerId === null) return false;
-			return mine ? sid !== viewerId : sid === viewerId;
-		});
+	function chatPane(win) {
+		let best = null;
+		let bestReverse = false;
+		for (const el of Array.from(win.document.querySelectorAll("div"))) {
+			if (el.scrollHeight <= el.clientHeight + 100) continue;
+			const s = win.getComputedStyle(el);
+			if (!/(auto|scroll)/.test(s.overflowY)) continue;
+			const r = el.getBoundingClientRect();
+			if (r.height < win.innerHeight * .4) continue;
+			const reverse = s.flexDirection === "column-reverse";
+			if (!reverse && r.left < win.innerWidth * .3) continue;
+			if (!best || reverse && !bestReverse || reverse === bestReverse && el.scrollHeight > best.scrollHeight) {
+				best = el;
+				bestReverse = reverse;
+			}
+		}
+		return best;
 	}
+	var CHAT_MARK = "__rizzbot_instagram_chat__";
+	var HEART = /^❤️?$/;
 	var SyncStopped = class extends Error {
 		constructor() {
 			super("Stopped.");
@@ -2301,60 +2290,206 @@ a.tlink svg { width: 13px; height: 13px; }
 			this.name = "GroupChatError";
 		}
 	};
-	var ITEM_WORDS = {
-		clip: "[shared a reel]",
-		xma_clip: "[shared a reel]",
-		media_share: "[shared a post]",
-		xma_media_share: "[shared a post]",
-		xma_reel_share: "[replied to a story]",
-		xma_story_share: "[shared a story]",
-		felix_share: "[shared a video]",
-		story_share: "[shared a story]",
-		reel_share: "[replied to a story]",
-		animated_media: "[sent a gif]",
-		media: "[sent a photo]",
-		raven_media: "[sent a disappearing photo]",
-		visual_media: "[sent a disappearing photo]",
-		voice_media: "[sent a voice message]",
-		like: "[sent a heart]",
-		location: "[shared a location]",
-		profile: "[shared a profile]",
-		link: "[sent a link]"
-	};
-	var NOT_MESSAGES = new Set([
-		"action_log",
-		"placeholder",
-		"video_call_event",
-		"expired_placeholder"
-	]);
 	var isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 	var str$1 = (v) => typeof v === "string" && v.trim() ? v.trim() : null;
-	function messageOf(item, viewerId) {
-		if (!isObj(item)) return null;
-		const type = str$1(item.item_type) ?? "";
-		if (NOT_MESSAGES.has(type)) return null;
-		const id = str$1(item.item_id) ?? str$1(item.message_id);
-		if (!id) return null;
-		const mine = item.is_sent_by_viewer === true || viewerId !== null && String(item.user_id ?? "") === viewerId;
-		let text = null;
-		if (type === "text") text = str$1(item.text);
-		else if (type === "link") text = str$1(isObj(item.link) ? item.link.text : null) ?? ITEM_WORDS.link;
+	var idStr = (v) => v != null && /^\d{1,40}$/.test(String(v)) ? String(v) : null;
+	var CONTENT_WORDS = {
+		SlideMessageImageContent: "[sent a photo]",
+		SlideMessageVideosContent: "[sent a video]",
+		SlideMessageAudiosContent: "[sent a voice message]",
+		SlideMessageStickerContent: "[sent a sticker]",
+		SlideMessageAnimatedImageContent: "[sent a gif]"
+	};
+	function shareText(content, node) {
+		const xma = isObj(content.xma) ? content.xma : {};
+		let path = "";
+		try {
+			const url = str$1(xma.target_url);
+			if (url) path = new URL(url, "https://www.instagram.com").pathname;
+		} catch {}
+		const own = str$1(content.xma_text_body) ?? str$1(node.text_body);
+		if (/^\/stories\//.test(path)) return own ? `[replied to a story] ${own}` : "[shared a story]";
+		const words = /^\/(reels?|clips?)\//.test(path) ? "[shared a reel]" : /^\/(p|tv)\//.test(path) ? "[shared a post]" : path && path !== "/" ? "[sent a link]" : "[shared a post]";
+		return own ? `${words} ${own}` : words;
+	}
+	function slideMessageOf(node, viewerFbid, herIgid = null) {
+		if (!isObj(node)) return null;
+		const id = str$1(node.message_id);
+		const sender = idStr(node.sender_fbid);
+		const ts = Number(node.timestamp_ms);
+		if (!id || !sender || !Number.isFinite(ts) || ts <= 0) return null;
+		if (node.tombstone_reason != null) return null;
+		const content = isObj(node.content) ? node.content : {};
+		const type = str$1(content.__typename) ?? "";
+		if (type === "SlideMessageAdminText") return null;
+		let mine;
+		if (viewerFbid) mine = sender === viewerFbid;
 		else {
-			const words = ITEM_WORDS[type] ?? "[sent something]";
-			const own = str$1(isObj(item.reel_share) ? item.reel_share.text : null) ?? str$1(item.text);
-			text = own ? `${words} ${own}` : words;
+			const igid = isObj(node.sender) ? idStr(node.sender.igid) : null;
+			if (!herIgid || !igid) return null;
+			mine = igid !== herIgid;
+		}
+		let text;
+		if (type === "SlideMessageText") text = str$1(content.text_body) ?? str$1(node.text_body);
+		else if (type === "SlideMessageXMAContent") text = shareText(content, node);
+		else {
+			const words = CONTENT_WORDS[type];
+			const own = str$1(node.text_body);
+			text = words ? own ? `${words} ${own}` : words : own ?? "[sent something]";
 		}
 		if (!text) return null;
-		const ts = Number(item.timestamp);
-		const at = Number.isFinite(ts) && ts > 0 ? new Date(ts > 0x5af3107a4000 ? ts / 1e3 : ts > 1e11 ? ts : ts * 1e3).toISOString() : null;
-		const liked = heartedByOther(item, item.user_id != null && String(item.user_id) ? String(item.user_id) : null, mine, viewerId);
+		const liked = (Array.isArray(node.reactions) ? node.reactions.filter(isObj) : []).some((r) => {
+			const by = idStr(r.sender_fbid);
+			return typeof r.reaction === "string" && HEART.test(r.reaction.trim()) && by !== null && by !== sender;
+		});
 		return {
 			id,
 			from: mine ? "him" : "her",
 			text: text.slice(0, 4e3),
-			at,
+			at: new Date(ts).toISOString(),
 			...liked ? { liked: true } : {}
 		};
+	}
+	var HANDLE = /^[a-z0-9._]{1,30}$/;
+	var DmCapture = class {
+		now;
+		threads = [];
+		version = 0;
+		constructor(now = () => Date.now()) {
+			this.now = now;
+		}
+		thread(id) {
+			if (!id) return null;
+			return this.threads.find((t) => t.aliases.has(id)) ?? null;
+		}
+		threadOf(herId) {
+			return this.threads.find((t) => !t.group && t.her?.id === herId)?.key ?? null;
+		}
+		ingest(json, current = null) {
+			const data = isObj(json) && isObj(json.data) ? json.data : null;
+			if (!data) return false;
+			let hit = false;
+			const det = isObj(data.get_slide_thread_nullable) ? data.get_slide_thread_nullable : null;
+			if (det && isObj(det.as_ig_direct_thread)) hit = this.detail(det.as_ig_direct_thread, det);
+			const lst = isObj(data.fetch__SlideThread) ? data.fetch__SlideThread : null;
+			if (lst && isObj(lst.as_ig_direct_thread)) hit = this.olderPage(lst.as_ig_direct_thread, lst, current) || hit;
+			if (hit) this.version++;
+			return hit;
+		}
+		ingestDocument(doc, current = null) {
+			let hit = false;
+			for (const s of Array.from(doc.querySelectorAll("script[type=\"application/json\"]"))) {
+				const text = s.textContent ?? "";
+				if (text.length > 8e6 || !/get_slide_thread_nullable|fetch__SlideThread/.test(text)) continue;
+				let json;
+				try {
+					json = JSON.parse(text);
+				} catch {
+					continue;
+				}
+				let seen = 0;
+				const walk = (v, depth) => {
+					if (!v || typeof v !== "object" || depth > 40 || ++seen > 2e5) return;
+					if (isObj(v) && isObj(v.data) && (isObj(v.data.get_slide_thread_nullable) || isObj(v.data.fetch__SlideThread))) {
+						hit = this.ingest({ data: v.data }, current) || hit;
+						return;
+					}
+					for (const x of Object.values(v)) walk(x, depth + 1);
+				};
+				walk(json, 0);
+			}
+			return hit;
+		}
+		find(ids) {
+			for (const id of ids) {
+				const t = this.thread(id);
+				if (t) return t;
+			}
+			return null;
+		}
+		detail(t, outer) {
+			const key = idStr(t.thread_key) ?? idStr(t.id) ?? idStr(outer.id);
+			if (!key) return false;
+			const ids = [
+				key,
+				idStr(t.thread_fbid),
+				idStr(t.id),
+				idStr(outer.id)
+			].filter((x) => !!x);
+			let th = this.find(ids);
+			if (!th) {
+				th = {
+					key,
+					aliases: new Set(),
+					her: null,
+					people: 0,
+					group: false,
+					viewerFbid: null,
+					nodes: new Map(),
+					older: null,
+					detailAt: 0,
+					pages: 0
+				};
+				this.threads.push(th);
+			}
+			for (const i of ids) th.aliases.add(i);
+			const users = Array.isArray(t.users) ? t.users.filter(isObj) : [];
+			th.people = users.length;
+			th.group = t.is_group === true || users.length > 1;
+			const u = users.length === 1 ? users[0] : null;
+			const id = u ? idStr(u.pk) ?? idStr(u.id) : null;
+			const username = u ? str$1(u.username)?.toLowerCase() : null;
+			th.her = id && username && HANDLE.test(username) ? {
+				id,
+				username
+			} : null;
+			const viewer = isObj(t.viewer) ? idStr(t.viewer.interop_messaging_user_fbid) : null;
+			if (viewer) th.viewerFbid = viewer;
+			const conn = isObj(t.slide_messages) ? t.slide_messages : {};
+			this.addNodes(th, conn);
+			const info = isObj(conn.page_info) ? conn.page_info : {};
+			if (!th.pages) th.older = info.has_next_page === true;
+			th.detailAt = this.now();
+			return true;
+		}
+		olderPage(t, outer, current) {
+			const conn = isObj(t.slide_messages) ? t.slide_messages : {};
+			const edges = Array.isArray(conn.edges) ? conn.edges.filter(isObj) : [];
+			const ids = [
+				idStr(t.id),
+				idStr(outer.id),
+				...edges.map((e) => isObj(e.node) ? idStr(e.node.thread_fbid) : null)
+			].filter((x) => !!x);
+			const th = this.find(ids) ?? this.thread(current);
+			if (!th) return false;
+			for (const i of ids) th.aliases.add(i);
+			this.addNodes(th, conn);
+			th.older = (isObj(conn.page_info) ? conn.page_info : {}).has_next_page === true;
+			th.pages++;
+			return true;
+		}
+		addNodes(th, conn) {
+			for (const e of Array.isArray(conn.edges) ? conn.edges : []) {
+				const n = isObj(e) && isObj(e.node) ? e.node : null;
+				const id = n ? str$1(n.message_id) : null;
+				if (n && id) th.nodes.set(id, n);
+			}
+		}
+	};
+	function messagesOf(th) {
+		const out = [];
+		let i = 0;
+		for (const n of th.nodes.values()) {
+			const m = slideMessageOf(n, th.viewerFbid, th.her?.id ?? null);
+			if (m) out.push({
+				m,
+				i: i++
+			});
+		}
+		return out.sort((a, b) => Date.parse(a.m.at) - Date.parse(b.m.at) || a.i - b.i).map((x) => x.m);
+	}
+	function threadFromPath(pathname) {
+		return /^\/direct\/t\/(\d{1,40})\/?/.exec(pathname)?.[1] ?? null;
 	}
 	function reachedMark(messages, mark) {
 		if (!mark) return false;
@@ -2364,160 +2499,68 @@ a.tlink svg { width: 13px; height: 13px; }
 		return messages.some((m) => m.at !== null && Date.parse(m.at) <= t);
 	}
 	var MAX_MESSAGES = 6e3;
-	var SLOW_DOWN_WAIT_MS = 3e4;
-	async function collectChat(threadId, d) {
+	var timing$2 = {
+		pageWaitMs: 6e3,
+		pollMs: 250
+	};
+	async function collectFromPage(d) {
 		const rnd = d.random ?? Math.random;
-		const byId = new Map();
-		const seenItems = new Set();
-		let her = null;
-		let viewerId = null;
-		let cursor = null;
-		let waited = false;
-		let slowed = false;
-		let mark = null;
+		const first = d.thread();
+		if (!first || !first.detailAt) throw new InstagramError("failed", "Instagram did not load this chat. Reload it and try again.");
+		if (first.group) throw new GroupChatError();
+		if (!first.people) throw new InstagramError("gone", "This account is no longer on Instagram, so its chat cannot be synced.");
+		const her = first.her;
+		if (!her) throw new InstagramError("failed", "Instagram did not say who this chat is with. Reload it and try again.");
+		if (d.stopped?.()) throw new SyncStopped();
+		const mark = d.markFor ? await d.markFor(her) : null;
+		if (d.stopped?.()) throw new SyncStopped();
 		let complete = false;
 		let reached = false;
-		for (let page = 0; page < 120; page++) {
-			if (d.stopped?.()) throw new SyncStopped();
-			if (page > 0) await d.sleep(1500 + rnd() * 1500);
-			if (d.stopped?.()) throw new SyncStopped();
-			let json;
-			try {
-				json = await d.ig(threadPath(threadId, cursor));
-			} catch (e) {
-				if (page > 0 && e instanceof InstagramError && e.kind === "slow-down") {
-					if (waited) {
-						slowed = true;
-						break;
-					}
-					waited = true;
-					d.progress(byId.size, true, mark !== null);
-					await d.sleep(SLOW_DOWN_WAIT_MS);
-					page--;
-					continue;
-				}
-				throw e;
+		let capped = false;
+		let quiet = 0;
+		let messages = [];
+		for (;;) {
+			const th = d.thread() ?? first;
+			messages = messagesOf(th);
+			if (reachedMark(messages, mark)) {
+				reached = complete = true;
+				break;
 			}
-			const thread = isObj(json) && isObj(json.thread) ? json.thread : null;
-			if (!thread) throw new InstagramError("failed", "Instagram did not hand over the chat. Reload it and try again.");
-			if (page === 0) {
-				const users = Array.isArray(thread.users) ? thread.users.filter(isObj) : [];
-				if (thread.is_group === true || users.length > 1) throw new GroupChatError();
-				if (!users.length) throw new InstagramError("gone", "This account is no longer on Instagram, so its chat cannot be synced.");
-				const u = users[0];
-				const id = String(u.pk ?? u.id ?? "");
-				const username = str$1(u.username)?.toLowerCase() ?? "";
-				if (!/^\d+$/.test(id) || !username) throw new InstagramError("failed", "Instagram did not say who this chat is with. Reload it and try again.");
-				her = {
-					id,
-					username
-				};
-				viewerId = thread.viewer_id != null ? String(thread.viewer_id) : null;
-				if (d.markFor) mark = await d.markFor(her);
-			}
-			if (d.stopped?.()) throw new SyncStopped();
-			const items = Array.isArray(thread.items) ? thread.items : [];
-			const pageMessages = [];
-			let fresh = 0;
-			for (const item of items) {
-				const key = isObj(item) ? String(item.item_id ?? item.message_id ?? "") : "";
-				if (key && !seenItems.has(key)) {
-					seenItems.add(key);
-					fresh++;
-				}
-				const m = messageOf(item, viewerId);
-				if (m) pageMessages.push(m);
-				if (m && !byId.has(m.id)) byId.set(m.id, m);
-			}
-			const next = typeof thread.oldest_cursor === "string" && thread.oldest_cursor ? thread.oldest_cursor : null;
-			const atMark = reachedMark(pageMessages, mark);
-			if (atMark) reached = true;
-			const more = fresh > 0 && next !== null && next !== cursor && !atMark;
-			d.progress(byId.size, more, mark !== null);
-			if (!more) {
+			if (th.older === false) {
 				complete = true;
 				break;
 			}
-			cursor = next;
+			if (messages.length >= 6e3) {
+				capped = true;
+				break;
+			}
+			d.progress(messages.length, true, mark !== null);
+			const before = th.pages;
+			if (!d.scrollUp()) break;
+			let waited = 0;
+			while ((d.thread() ?? th).pages === before && waited < timing$2.pageWaitMs) {
+				if (d.stopped?.()) throw new SyncStopped();
+				await d.sleep(timing$2.pollMs);
+				waited += timing$2.pollMs;
+			}
+			if (d.stopped?.()) throw new SyncStopped();
+			if ((d.thread() ?? th).pages === before) {
+				if (++quiet >= 4) break;
+				continue;
+			}
+			quiet = 0;
+			await d.sleep(300 + rnd() * 500);
 		}
-		const messages = [...byId.values()].reverse();
+		if (capped) messages = messages.slice(-6e3);
+		d.progress(messages.length, false, mark !== null);
 		return {
 			[CHAT_MARK]: 1,
 			version: 1,
 			her,
 			messages,
 			truncated: !complete,
-			capped: !complete && !slowed,
+			capped,
 			reached
-		};
-	}
-	function threadFromPath(pathname) {
-		return /^\/direct\/t\/(\d{1,40})\/?/.exec(pathname)?.[1] ?? null;
-	}
-	async function resolveThreadId(urlId, d) {
-		let cursor = null;
-		for (let page = 0; page < 10; page++) {
-			if (d.stopped?.()) throw new SyncStopped();
-			if (page > 0) await d.sleep(1200);
-			if (d.stopped?.()) throw new SyncStopped();
-			const json = await d.ig(inboxPath(cursor));
-			if (d.stopped?.()) throw new SyncStopped();
-			const inbox = isObj(json) && isObj(json.inbox) ? json.inbox : null;
-			const hit = (inbox && Array.isArray(inbox.threads) ? inbox.threads.filter(isObj) : []).find((t) => [
-				t.messaging_thread_key,
-				t.thread_v2_id,
-				t.thread_id
-			].some((v) => v != null && String(v) === urlId));
-			if (hit) {
-				const id = String(hit.thread_v2_id ?? hit.thread_id ?? "");
-				return /^\d{1,40}$/.test(id) ? id : null;
-			}
-			if (!inbox || inbox.has_older !== true || typeof inbox.oldest_cursor !== "string") return null;
-			cursor = inbox.oldest_cursor;
-		}
-		return null;
-	}
-	function userIds(u) {
-		return [
-			u.pk,
-			u.pk_id,
-			u.id,
-			u.strong_id__
-		].filter((v) => v != null).map(String);
-	}
-	async function findThreadWith(user, d) {
-		const handle = user.username.toLowerCase();
-		let cursor = null;
-		for (let page = 0; page < 10; page++) {
-			if (d.stopped?.()) throw new SyncStopped();
-			if (page > 0) await d.sleep(1200);
-			if (d.stopped?.()) throw new SyncStopped();
-			const json = await d.ig(inboxPath(cursor));
-			if (d.stopped?.()) throw new SyncStopped();
-			const inbox = isObj(json) && isObj(json.inbox) ? json.inbox : null;
-			const hit = (inbox && Array.isArray(inbox.threads) ? inbox.threads.filter(isObj) : []).find((t) => {
-				if (t.is_group === true) return false;
-				const users = Array.isArray(t.users) ? t.users.filter(isObj) : [];
-				if (users.length !== 1) return false;
-				const ids = userIds(users[0]);
-				return ids.length ? ids.includes(user.id) : typeof users[0].username === "string" && users[0].username.toLowerCase() === handle;
-			});
-			if (hit) {
-				const id = String(hit.thread_v2_id ?? hit.thread_id ?? "");
-				return {
-					threadId: /^\d{1,40}$/.test(id) ? id : null,
-					complete: true
-				};
-			}
-			if (!inbox || inbox.has_older !== true || typeof inbox.oldest_cursor !== "string") return {
-				threadId: null,
-				complete: !!inbox
-			};
-			cursor = inbox.oldest_cursor;
-		}
-		return {
-			threadId: null,
-			complete: false
 		};
 	}
 	var ReadCutShort = class extends Error {};
@@ -2536,38 +2579,6 @@ a.tlink svg { width: 13px; height: 13px; }
 		if (status === 404) return true;
 		return status === 409 && !body?.busy && !body?.code;
 	}
-	function chatEndFor(e, threadId) {
-		const t = threadId ?? void 0;
-		if (e instanceof ChatSkipped) return {
-			detail: "skipped",
-			ok: false,
-			skipped: true
-		};
-		if (e instanceof ReadCutShort) return {
-			detail: "read in part, not sent",
-			ok: false,
-			skipped: true,
-			...t ? { resync: t } : {}
-		};
-		if (e instanceof SyncStopped) return {
-			detail: "stopped",
-			ok: false,
-			skipped: true,
-			...t ? { retry: t } : {}
-		};
-		if (e instanceof ApiError && e.status === 409 && e.body?.gap === true) return {
-			detail: "read in part, not sent",
-			ok: false,
-			skipped: true,
-			...t ? { resync: t } : {}
-		};
-		return {
-			detail: "not synced",
-			ok: false,
-			why: e instanceof ApiError || e instanceof InstagramError || e instanceof NotConnectedError || e instanceof GroupChatError ? e.message : "Something went wrong reading the chat.",
-			...t && !(e instanceof GroupChatError) ? { retry: t } : {}
-		};
-	}
 	var instagram_exports = __exportAll({
 		ago: () => ago,
 		start: () => start$1,
@@ -2576,14 +2587,15 @@ a.tlink svg { width: 13px; height: 13px; }
 	});
 	var LOAD_GRACE_MS = 6e3;
 	var MORE_POSTS_WAIT_MS = 5e3;
-	var PROFILE_SHARE = .45;
-	var CHAT_FROM = .5;
+	var PROFILE_SHARE = .9;
 	var syncedKey = (threadId) => `ig.chatSynced.${threadId}`;
 	var whoKey = (threadId) => `ig.chatWho.${threadId}`;
 	var addedKey = (origin, handle) => `ig.inRizzBot.${origin}.${handle.toLowerCase()}`;
-	var threadKey = (urlId) => `ig.threadFor.${urlId}`;
+	var chatOfKey = (herId) => `ig.chatOf.${herId}`;
+	var SYNC_ON_LOAD = "ig.syncOnLoad";
+	var FRESH_MS = 15e3;
+	var CHAT_LOAD_MS = 2e4;
 	var KEEP_OPEN = "Keep this tab open until it finishes.";
-	var NOT_IN_400 = "This chat is older than your newest 400 chats, so RizzBot Connect cannot find it. A new message from either of you brings it back up. Then sync again.";
 	var timing$1 = { importingRecheckMs: 2e4 };
 	var APP_NAMES = {
 		hinge: "Hinge",
@@ -2636,16 +2648,18 @@ a.tlink svg { width: 13px; height: 13px; }
 		const storyRuns = new Map();
 		let profileSince = Date.now();
 		let refreshTimer = null;
-		const threadByHandle = new Map();
+		const dm = new DmCapture();
 		const { pageFetch } = installHooks$1(win, (_url, json) => {
-			noteThread(json);
+			if (dm.ingest(json, threadFromPath(win.location.pathname))) noteChats();
 			if (capture.ingest(json) && !held) scheduleRefresh();
 		});
-		function noteThread(json) {
-			const j = json;
-			if (!j || typeof j.thread_v2_id !== "string" || !/^\d{1,40}$/.test(j.thread_v2_id) || !Array.isArray(j.users) || j.users.length !== 1) return;
-			const handle = typeof j.users[0]?.username === "string" ? j.users[0].username.toLowerCase() : null;
-			if (handle) threadByHandle.set(handle, j.thread_v2_id);
+		function noteChats() {
+			const here = threadFromPath(win.location.pathname);
+			const th = dm.thread(here);
+			if (!th?.her || th.group) return;
+			host.set(chatOfKey(th.her.id), th.key);
+			for (const id of new Set([here, th.key])) if (id && !host.get(whoKey(id), null)) host.set(whoKey(id), th.her);
+			if (!held) scheduleRefresh();
 		}
 		const ig = createIgGet(pageFetch, () => ({
 			cookie: win.document.cookie,
@@ -2737,7 +2751,7 @@ a.tlink svg { width: 13px; height: 13px; }
 						ig_user: who.username
 					}, {
 						label: "Sync newest",
-						onClick: () => void syncFromPage(threadId)
+						onClick: () => syncFromPage(threadId)
 					});
 					if (pill) return pill;
 				}
@@ -2747,12 +2761,12 @@ a.tlink svg { width: 13px; height: 13px; }
 					ok: true,
 					label: `Synced ${ago(synced)}`,
 					title: "Press to sync the newest messages",
-					onClick: () => void syncFromPage(threadId)
+					onClick: () => syncFromPage(threadId)
 				};
 				return {
 					kind: "pill",
 					label: "Sync chat to RizzBot",
-					onClick: () => void syncFromPage(threadId)
+					onClick: () => syncFromPage(threadId)
 				};
 			}
 			if (!username) return { kind: "hidden" };
@@ -3166,12 +3180,11 @@ a.tlink svg { width: 13px; height: 13px; }
 			const sent = got.payload;
 			const profileDetail = sent.access === "limited" ? "profile only" : [plural$1(sent.posts.length, "post"), sent.highlights.length ? plural$1(sent.highlights.length, "highlight") : ""].filter(Boolean).join(", ");
 			const done = (chat) => {
-				const failed = !chat.ok && !chat.skipped;
 				panel.show({
 					kind: "card",
 					tone: "ok",
-					icon: failed ? "warn" : "ok",
-					title: failed ? "Her profile is in" : "Upload complete",
+					icon: "ok",
+					title: "Upload complete",
 					text: [
 						`RizzBot is ${res.created ? "importing" : "updating"} ${res.name || name || "her"} now.`,
 						...got?.note ? [got.note] : [],
@@ -3193,16 +3206,11 @@ a.tlink svg { width: 13px; height: 13px; }
 							state: "running"
 						}
 					],
-					...chat.resync ? { buttons: [{
-						label: "Resync all",
-						quiet: true,
+					...chat.open ? { buttons: [{
+						label: "Open and sync your chat",
+						primary: true,
 						icon: "sync",
-						onClick: () => void syncChat(chat.resync, username, true)
-					}] } : chat.retry ? { buttons: [{
-						label: "Sync the chat again",
-						quiet: true,
-						icon: "sync",
-						onClick: () => void syncChat(chat.retry, username)
+						onClick: () => openAndSync(chat.open)
 					}] } : {},
 					link: {
 						label: "Open in RizzBot",
@@ -3213,189 +3221,135 @@ a.tlink svg { width: 13px; height: 13px; }
 					onClose: release
 				});
 			};
-			let stop = false;
-			let last = ["Finding your chat", CHAT_FROM];
-			const showChat = (step, value, sending = false) => {
-				last = [step, value];
-				panel.show({
-					kind: "card",
-					title,
-					text: [KEEP_OPEN],
-					icon: "spin",
-					progress: {
-						value,
-						step
-					},
-					buttons: sending ? [] : stop ? [{
-						label: "Stopping",
-						quiet: true,
-						disabled: true,
-						onClick: () => {}
-					}] : [{
-						label: "Stop",
-						quiet: true,
-						onClick: () => (stop = true, showChat(...last))
-					}]
-				});
-			};
-			let found = null;
-			try {
-				showChat("Finding your chat", CHAT_FROM);
-				found = await findThread(sent.user, () => stop);
-				if (!found.threadId) {
-					if (found.complete) done({
-						detail: "no chat found",
-						ok: true,
-						why: "If she wrote to you first, accept her message request on Instagram, then sync from the chat."
-					});
-					else done({
-						detail: "not found",
-						ok: false,
-						skipped: true,
-						why: NOT_IN_400
-					});
-					return;
-				}
-				const threadId = found.threadId;
-				const r = await readAndSend(threadId, {
-					full: false,
-					stopped: () => stop,
-					show: (step, f, sending) => showChat(step, CHAT_FROM + f * .5, sending)
-				});
-				const detail = res.created ? r.scanned ? plural$1(r.scanned, "message") : "no messages" : r.res.added ? plural$1(r.res.added, "new message") : "no new messages";
-				if (r.capped) done({
-					detail: `${detail}, the newest ${MAX_MESSAGES.toLocaleString("en-US")}`,
-					ok: true
-				});
-				else if (r.truncated) done({
-					detail: `${detail}, not all`,
-					ok: false,
-					skipped: true,
-					resync: threadId
-				});
-				else done({
-					detail,
-					ok: true
-				});
-			} catch (e) {
-				done(chatEndFor(e, found?.threadId ?? null));
-			}
-		}
-		async function findThread(user, stopped) {
-			const known = threadByHandle.get(user.username.toLowerCase());
-			if (known) return {
-				threadId: known,
-				complete: true
-			};
-			return findThreadWith(user, {
-				ig,
-				sleep,
-				...stopped ? { stopped } : {}
+			const open = dm.threadOf(sent.user.id) ?? host.get(chatOfKey(sent.user.id), null);
+			if (typeof open === "string" && /^\d{1,40}$/.test(open)) done({
+				detail: "not synced yet",
+				ok: false,
+				skipped: true,
+				open,
+				why: "Your chat is synced from its own page."
+			});
+			else done({
+				detail: "not synced yet",
+				ok: false,
+				skipped: true,
+				why: "To add your chat, open it on Instagram and press Sync chat to RizzBot."
 			});
 		}
-		async function syncFromPage(urlId) {
+		function openAndSync(key) {
+			host.set(SYNC_ON_LOAD, {
+				key,
+				full: false,
+				at: Date.now()
+			});
+			win.location.assign(`/direct/t/${key}/`);
+		}
+		function syncFromPage(urlId, full = false, fromLoad = false) {
 			held = true;
-			let stop = false;
-			const finding = () => panel.show({
+			const th = dm.thread(urlId);
+			if (!fromLoad && (!th || Date.now() - th.detailAt > FRESH_MS)) {
+				host.set(SYNC_ON_LOAD, {
+					key: urlId,
+					full,
+					at: Date.now()
+				});
+				panel.show({
+					kind: "card",
+					title: "Syncing your chat",
+					text: ["Reloading the chat to get your newest messages."],
+					icon: "spin",
+					progress: {
+						value: .02,
+						step: "Reloading the chat"
+					}
+				});
+				win.location.reload();
+				return;
+			}
+			syncChat(urlId, void 0, full);
+		}
+		async function syncWhenLoaded(urlId, full) {
+			held = true;
+			panel.show({
 				kind: "card",
 				title: "Syncing your chat",
-				text: ["Getting your newest messages."],
+				text: ["Waiting for Instagram to load the chat."],
 				icon: "spin",
 				progress: {
 					value: .03,
-					step: "Finding this chat"
-				},
-				buttons: stop ? [{
-					label: "Stopping",
-					quiet: true,
-					disabled: true,
-					onClick: () => {}
-				}] : [{
-					label: "Stop",
-					quiet: true,
-					onClick: () => (stop = true, finding())
-				}]
+					step: "Loading the chat"
+				}
 			});
-			finding();
-			try {
-				const cached = host.get(threadKey(urlId), null);
-				const threadId = typeof cached === "string" && /^\d{1,40}$/.test(cached) ? cached : await resolveThreadId(urlId, {
-					ig,
-					sleep,
-					stopped: () => stop
-				});
-				if (threadId && threadId !== cached) host.set(threadKey(urlId), threadId);
-				if (stop) throw new SyncStopped();
-				if (!threadId) {
-					panel.show({
-						kind: "card",
-						icon: "warn",
-						title: "Could not find this chat",
-						text: [NOT_IN_400],
-						onClose: release
-					});
-					return;
-				}
-				await syncChat(threadId, void 0, false, urlId);
-			} catch (e) {
-				if (e instanceof SyncStopped) {
-					panel.show({
-						kind: "card",
-						title: "Sync stopped",
-						text: ["Nothing in RizzBot was changed."],
-						onClose: release
-					});
-					return;
-				}
-				const message = e instanceof InstagramError ? e.message : "Something went wrong finding this chat. Reload it and try again.";
-				const retry = !(e instanceof InstagramError) || e.kind === "failed";
-				panel.show({
-					kind: "card",
-					icon: "error",
-					tone: "error",
-					title: "Could not sync the chat",
-					text: [message],
-					buttons: retry ? [{
-						label: "Try again",
-						primary: true,
-						icon: "retry",
-						onClick: () => void syncFromPage(urlId)
-					}] : [],
-					onClose: release
-				});
+			const end = Date.now() + CHAT_LOAD_MS;
+			for (let tick = 0; Date.now() < end; tick++) {
+				if (tick % 8 === 0 && dm.ingestDocument(win.document, urlId)) noteChats();
+				if (dm.thread(urlId)?.detailAt) return syncFromPage(urlId, full, true);
+				await sleep(250);
 			}
+			panel.show({
+				kind: "card",
+				icon: "error",
+				tone: "error",
+				title: "Could not sync the chat",
+				text: ["Instagram did not load this chat. Reload it and try again."],
+				buttons: [{
+					label: "Try again",
+					primary: true,
+					icon: "retry",
+					onClick: () => syncFromPage(urlId, full)
+				}],
+				onClose: release
+			});
 		}
-		async function readAndSend(threadId, o) {
+		async function readAndSend(urlId, o) {
 			const api = createApi(host);
 			const ctx = o.ctx ?? { handle: "" };
-			const pageAtStart = threadFromPath(win.location.pathname);
 			let partial = false;
 			o.show("Reading your messages", .05);
-			let pages = 0;
-			const { truncated, capped, reached, ...chat } = await collectChat(threadId, {
-				ig,
-				sleep,
-				...o.stopped ? { stopped: o.stopped } : {},
-				progress: (read, more, sinceMark) => {
-					pages++;
-					const what = sinceMark ? "new messages" : "your messages";
-					o.show(more ? `Reading ${what} (${read} so far)` : sinceMark ? "Read the new messages" : `Read all ${read} messages`, more ? Math.min(.85, .1 + pages * .08) : .88);
-				},
-				markFor: async (her) => {
-					ctx.handle = her.username;
-					const q = `ig_id=${encodeURIComponent(her.id)}&username=${encodeURIComponent(her.username)}`;
-					try {
-						const r = await api.call("GET", `/api/girls/instagram-chat?${q}`, void 0, 2e4);
-						if (r.first_merge && !await askMerge(r.name, r.first_merge.app, r.first_merge.turns)) throw new ChatSkipped();
-						partial = !o.full && !!r.mark;
-						return o.full ? null : r.mark ?? null;
-					} catch (e) {
-						if (e instanceof ApiError && e.status === 404) throw e;
-						if (e instanceof ApiError || e instanceof NotConnectedError || e instanceof ChatSkipped) throw e;
-						throw new ApiError("RizzBot could not be reached. Try again in a minute.", 0, null);
+			let rounds = 0;
+			let scrolled = null;
+			const scrollUp = () => {
+				if (threadFromPath(win.location.pathname) !== urlId) return false;
+				const el = chatPane(win);
+				if (!el) return false;
+				if (scrolled?.el !== el) scrolled = {
+					el,
+					top: el.scrollTop
+				};
+				el.scrollTop = el.scrollTop - 2e5;
+				return true;
+			};
+			let read;
+			try {
+				read = await collectFromPage({
+					thread: () => dm.thread(urlId),
+					scrollUp,
+					sleep,
+					...o.stopped ? { stopped: o.stopped } : {},
+					progress: (n, more, sinceMark) => {
+						rounds++;
+						const what = sinceMark ? "new messages" : "your messages";
+						o.show(more ? `Reading ${what} (${n} so far)` : sinceMark ? "Read the new messages" : `Read all ${n} messages`, more ? Math.min(.85, .1 + rounds * .03) : .88);
+					},
+					markFor: async (her) => {
+						ctx.handle = her.username;
+						const q = `ig_id=${encodeURIComponent(her.id)}&username=${encodeURIComponent(her.username)}`;
+						try {
+							const r = await api.call("GET", `/api/girls/instagram-chat?${q}`, void 0, 2e4);
+							if (r.first_merge && !await askMerge(r.name, r.first_merge.app, r.first_merge.turns)) throw new ChatSkipped();
+							partial = !o.full && !!r.mark;
+							return o.full ? null : r.mark ?? null;
+						} catch (e) {
+							if (e instanceof ApiError || e instanceof NotConnectedError || e instanceof ChatSkipped) throw e;
+							throw new ApiError("RizzBot could not be reached. Try again in a minute.", 0, null);
+						}
 					}
-				}
-			});
+				});
+			} finally {
+				const back = scrolled;
+				if (back) back.el.scrollTop = back.top;
+			}
+			const { truncated, capped, reached, ...chat } = read;
 			ctx.handle = chat.her.username;
 			const decision = sendDecision({
 				partial,
@@ -3409,23 +3363,15 @@ a.tlink svg { width: 13px; height: 13px; }
 				...chat,
 				full: decision.full
 			} }, 6e4);
-			const now = Date.now();
-			for (const id of new Set([
-				threadId,
-				o.pageId,
-				pageAtStart
-			])) {
-				if (!id) continue;
-				host.set(syncedKey(id), now);
-				host.set(whoKey(id), {
-					id: chat.her.id,
-					username: chat.her.username
-				});
-				drafts.refresh(`t:${id}`, {
-					ig_id: chat.her.id,
-					ig_user: chat.her.username
-				}, true);
-			}
+			host.set(syncedKey(urlId), Date.now());
+			host.set(whoKey(urlId), {
+				id: chat.her.id,
+				username: chat.her.username
+			});
+			drafts.refresh(`t:${urlId}`, {
+				ig_id: chat.her.id,
+				ig_user: chat.her.username
+			}, true);
 			return {
 				res,
 				partial,
@@ -3455,7 +3401,7 @@ a.tlink svg { width: 13px; height: 13px; }
 				});
 			});
 		}
-		async function syncChat(threadId, knownHandle, full = false, pageId) {
+		async function syncChat(urlId, knownHandle, full = false) {
 			held = true;
 			const api = createApi(host);
 			const ctx = { handle: knownHandle ?? "" };
@@ -3493,9 +3439,8 @@ a.tlink svg { width: 13px; height: 13px; }
 				});
 			};
 			try {
-				const { res, partial, truncated, capped } = await readAndSend(threadId, {
+				const { res, partial, truncated, capped } = await readAndSend(urlId, {
 					full,
-					pageId,
 					show,
 					ctx,
 					stopped: () => stop
@@ -3504,7 +3449,7 @@ a.tlink svg { width: 13px; height: 13px; }
 					label: "Resync all",
 					quiet: true,
 					icon: "sync",
-					onClick: () => void syncChat(threadId, ctx.handle, true, pageId)
+					onClick: () => syncFromPage(urlId, true)
 				}];
 				panel.show({
 					kind: "card",
@@ -3515,7 +3460,7 @@ a.tlink svg { width: 13px; height: 13px; }
 						value: res.added,
 						label: res.added === 1 ? "new message" : "new messages"
 					} } : {},
-					text: capped ? [`RizzBot has the newest ${MAX_MESSAGES.toLocaleString("en-US")} messages of this chat. One sync reads no further back.`] : truncated ? ["Instagram stopped the read early, so older messages may be missing. Resync all to read the rest."] : res.added ? [] : ["RizzBot has every message."],
+					text: capped ? [`RizzBot has the newest ${MAX_MESSAGES.toLocaleString("en-US")} messages of this chat. One sync reads no further back.`] : truncated ? ["Instagram stopped loading older messages, so some may be missing. Resync all to read the rest."] : res.added ? [] : ["RizzBot has every message."],
 					buttons: (partial || truncated) && !capped ? resync : [],
 					link: {
 						label: "Open in RizzBot",
@@ -3540,12 +3485,12 @@ a.tlink svg { width: 13px; height: 13px; }
 						kind: "card",
 						icon: "warn",
 						title: "Chat read in part",
-						text: ["Instagram stopped the read before it reached what RizzBot has, so nothing was sent. Resync all reads it from the start."],
+						text: ["Instagram stopped loading older messages before it reached what RizzBot has, so nothing was sent. Resync all reads it from the start."],
 						buttons: [{
 							label: "Resync all",
 							primary: true,
 							icon: "sync",
-							onClick: () => void syncChat(threadId, ctx.handle, true, pageId)
+							onClick: () => syncFromPage(urlId, true)
 						}],
 						onClose: release
 					});
@@ -3581,7 +3526,7 @@ a.tlink svg { width: 13px; height: 13px; }
 							label: "Resync all",
 							primary: true,
 							icon: "sync",
-							onClick: () => void syncChat(threadId, ctx.handle, true, pageId)
+							onClick: () => syncFromPage(urlId, true)
 						}],
 						onClose: release
 					});
@@ -3600,7 +3545,7 @@ a.tlink svg { width: 13px; height: 13px; }
 						label: "Try again",
 						primary: true,
 						icon: "retry",
-						onClick: () => void syncChat(threadId, ctx.handle, full, pageId)
+						onClick: () => syncFromPage(urlId, full)
 					}] : [],
 					...status === 402 ? { link: {
 						label: "See your plan",
@@ -3612,6 +3557,14 @@ a.tlink svg { width: 13px; height: 13px; }
 			}
 		}
 		const onReady = () => {
+			if (dm.ingestDocument(win.document, threadFromPath(win.location.pathname))) noteChats();
+			const pending = host.get(SYNC_ON_LOAD, null);
+			if (pending) {
+				host.del(SYNC_ON_LOAD);
+				const here = threadFromPath(win.location.pathname);
+				const at = typeof pending.at === "number" ? pending.at : 0;
+				if (here && Date.now() - at < 6e4 && (pending.key === here || Date.now() - at < 2e4)) syncWhenLoaded(here, pending.full === true);
+			}
 			refresh();
 			onUrlChange$1(win, () => {
 				profileSince = Date.now();
