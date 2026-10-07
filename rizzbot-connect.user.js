@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RizzBot Connect
 // @namespace    https://rizzbotproject.vercel.app
-// @version      1.17.2
+// @version      1.17.3
 // @author       rizzbotdev
 // @description  Bring girls into RizzBot from the sites you use in your browser. Instagram: add her from her profile, with your chat, and draft replies to the story or post you are looking at. Reads only what you can see; never likes, follows or opens a story for you. Tinder: a status badge on every match and chat, chats synced by themselves, and one-press import. Reads only what Tinder already loaded; never sends Tinder a request or presses its buttons.
 // @license      UNLICENSED
@@ -1583,6 +1583,9 @@ a.tlink svg { width: 13px; height: 13px; }
 		};
 		return null;
 	}
+	function storyAction(p) {
+		return p.kind === "post" ? "Use this post as an opener" : p.kind === "highlight" ? "Reply to this highlight" : "Reply to her story";
+	}
 	function storyNoun(p) {
 		return p.kind === "post" ? "post" : p.kind === "highlight" ? "highlight" : "story";
 	}
@@ -2968,7 +2971,7 @@ a.tlink svg { width: 13px; height: 13px; }
 			};
 			const send = {
 				kind: "pill",
-				label: "Send to RizzBot",
+				label: storyAction(p),
 				title: `Draft replies to her ${noun} in RizzBot`,
 				onClick: () => void sendStory(p)
 			};
@@ -2989,7 +2992,7 @@ a.tlink svg { width: 13px; height: 13px; }
 					...r.slug ? { onClick: () => host.openTab(`${origin}/chats/${encodeURIComponent(r.slug)}`) } : {}
 				};
 				case "ready": return draftsPill(r.key, r.who, {
-					label: `Send this ${noun}`,
+					label: storyAction(p),
 					onClick: () => void sendStory(p)
 				}) ?? send;
 				case "needs-profile": return {
@@ -3004,7 +3007,7 @@ a.tlink svg { width: 13px; height: 13px; }
 					if (now && now.id !== r.before) {
 						r.phase = "ready";
 						return draftsPill(r.key, r.who, {
-							label: `Send this ${noun}`,
+							label: storyAction(p),
 							onClick: () => void sendStory(p)
 						}) ?? send;
 					}
