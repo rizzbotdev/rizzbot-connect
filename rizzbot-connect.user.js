@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RizzBot Connect
 // @namespace    https://rizzbotproject.vercel.app
-// @version      1.17.0
+// @version      1.17.1
 // @author       rizzbotdev
 // @description  Bring girls into RizzBot from the sites you use in your browser. Instagram: add her from her profile, with your chat, and draft replies to the story or post you are looking at. Reads only what you can see; never likes, follows or opens a story for you. Tinder: a status badge on every match and chat, chats synced by themselves, and one-press import. Reads only what Tinder already loaded; never sends Tinder a request or presses its buttons.
 // @license      UNLICENSED
@@ -653,7 +653,11 @@ a.tlink svg { width: 13px; height: 13px; }
 .grade .spin { width: 13px; height: 13px; border-color: rgb(255 255 255 / .15); border-top-color: rgb(255 255 255 / .55); }
 .bubbles { flex: 1; min-width: 0; display: grid; gap: 3px; justify-items: end; }
 /* the suggestion green of her RizzBot page */
-.bub { max-width: 100%; padding: 6px 11px; border-radius: 15px; background: linear-gradient(100deg, #16a34a, #22c55e); color: #fff; font-size: 13.5px; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; }
+/* RizzBot's own suggestion bubble (globals.css .bubble-suggest): the deep
+   emerald, so white text reads at full strength (the bright green washed it out) */
+.bub { max-width: 100%; padding: 7px 12px; border-radius: 16px 16px 6px 16px; background: linear-gradient(135deg, hsl(152 65% 34%), hsl(160 70% 28%)); color: #fff;
+  font-family: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 14px; font-weight: 500; line-height: 1.4;
+  white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; -webkit-font-smoothing: auto; }
 .why { font-size: 12px; color: #fca5a5; }
 .ib { width: 30px; height: 30px; border-radius: 9px; border: 0; display: grid; place-items: center; background: rgb(255 255 255 / .07); color: #d6d6dc; cursor: pointer; flex: none; transition: background .15s, color .15s; }
 .ib:hover:not(:disabled) { background: rgb(255 255 255 / .14); color: #fff; }
@@ -1117,7 +1121,7 @@ a.tlink svg { width: 13px; height: 13px; }
 					b.appendChild(c);
 				}
 				if (state.title) b.title = state.title;
-				b.disabled = !!state.disabled || !!state.busy || !state.onClick;
+				b.disabled = !!state.disabled || !state.onClick;
 				b.addEventListener("click", (e) => {
 					e.stopPropagation();
 					this.pillClick?.();
@@ -1629,6 +1633,95 @@ a.tlink svg { width: 13px; height: 13px; }
 		const src = img.currentSrc || img.src;
 		return src && isInstagramCdn(src) ? { url: src } : null;
 	}
+	var HANDLE_RE = /^[A-Za-z0-9._]{1,30}$/;
+	function ownerOf$1(v) {
+		const u = v;
+		if (!u || typeof u !== "object" || typeof u.username !== "string" || !HANDLE_RE.test(u.username)) return null;
+		return {
+			id: typeof u.pk === "string" || typeof u.pk === "number" ? String(u.pk) : typeof u.id === "string" && /^\d+$/.test(u.id) ? u.id : null,
+			username: u.username.toLowerCase()
+		};
+	}
+	var MediaOwners = class {
+		byCode = new Map();
+		byHighlight = new Map();
+		note(json) {
+			let learned = false;
+			let budget = 2e4;
+			const walk = (v, depth) => {
+				if (!v || typeof v !== "object" || depth > 14 || --budget < 0) return;
+				if (Array.isArray(v)) {
+					for (const x of v) walk(x, depth + 1);
+					return;
+				}
+				const o = v;
+				const who = ownerOf$1(o.user) ?? ownerOf$1(o.owner);
+				if (who) {
+					if (typeof o.code === "string" && /^[A-Za-z0-9_-]{5,40}$/.test(o.code) && !this.byCode.has(o.code)) {
+						this.byCode.set(o.code, who);
+						learned = true;
+					}
+					const id = typeof o.id === "string" ? o.id : null;
+					const m = id ? /^highlight:(\d{1,40})$/.exec(id) : null;
+					if (m && !this.byHighlight.has(m[1])) {
+						this.byHighlight.set(m[1], who);
+						learned = true;
+					}
+				}
+				for (const k in o) walk(o[k], depth + 1);
+			};
+			walk(json, 0);
+			return learned;
+		}
+		post(code) {
+			return this.byCode.get(code) ?? null;
+		}
+		highlight(id) {
+			return this.byHighlight.get(id) ?? null;
+		}
+	};
+	function ownerFromDom(doc, self = null) {
+		const vh = doc.defaultView?.innerHeight ?? 800;
+		const inHeader = [...doc.querySelectorAll("header a[href]")];
+		const nearTop = [...doc.querySelectorAll("a[href]")].filter((a) => !a.closest("header") && !a.closest("nav, [role=\"navigation\"]") && a.getBoundingClientRect().top <= vh / 5);
+		for (const a of [...inHeader, ...nearTop]) {
+			if (a.closest("nav, [role=\"navigation\"]")) continue;
+			const m = /^\/([A-Za-z0-9._]{1,30})\/?$/.exec(new URL(a.getAttribute("href") ?? "", "https://www.instagram.com").pathname);
+			if (!m) continue;
+			const handle = m[1].toLowerCase();
+			if (RESERVED_PATHS.has(handle) || handle === self) continue;
+			const text = (a.textContent ?? "").trim().toLowerCase();
+			const alt = (a.querySelector("img")?.getAttribute("alt") ?? "").toLowerCase();
+			if (text === handle || alt.includes(handle)) return {
+				id: null,
+				username: handle
+			};
+		}
+		return null;
+	}
+	var RESERVED_PATHS = new Set([
+		"explore",
+		"direct",
+		"accounts",
+		"reels",
+		"reel",
+		"stories",
+		"p",
+		"tv",
+		"about",
+		"legal",
+		"developer",
+		"web",
+		"emails",
+		"challenge",
+		"session",
+		"privacy",
+		"terms",
+		"api",
+		"graphql",
+		"static",
+		"ajax"
+	]);
 	var PAYLOAD_MARK = "__rizzbot_instagram__";
 	var isObj$3 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 	var arr$1 = (v) => Array.isArray(v) ? v : [];
@@ -2624,6 +2717,11 @@ a.tlink svg { width: 13px; height: 13px; }
 		const capture = new ProfileCapture();
 		const panel = new Panel(win.document);
 		panel.setPlacement(() => {
+			if (storyFromPath(win.location.pathname)) return {
+				kind: "fixed",
+				top: "20px",
+				right: "56px"
+			};
 			if (threadFromPath(win.location.pathname)) {
 				const call = win.document.querySelector("svg[aria-label=\"Audio call\"]")?.closest("[role=\"button\"]");
 				if (call?.parentElement) return {
@@ -2649,7 +2747,9 @@ a.tlink svg { width: 13px; height: 13px; }
 		let profileSince = Date.now();
 		let refreshTimer = null;
 		const dm = new DmCapture();
+		const owners = new MediaOwners();
 		const { pageFetch } = installHooks$1(win, (_url, json) => {
+			if (owners.note(json) && !held && storyFromPath(win.location.pathname)) scheduleRefresh();
 			if (dm.ingest(json, threadFromPath(win.location.pathname))) noteChats();
 			if (capture.ingest(json) && !held) scheduleRefresh();
 		});
@@ -2843,7 +2943,16 @@ a.tlink svg { width: 13px; height: 13px; }
 				id: idOf(p.user),
 				username: p.user
 			};
-			return null;
+			const loaded = p.kind === "post" ? owners.post(p.code) : owners.highlight(p.highlight);
+			if (loaded) return {
+				id: loaded.id ?? idOf(loaded.username),
+				username: loaded.username
+			};
+			const fromPage = ownerFromDom(win.document);
+			return fromPage ? {
+				id: idOf(fromPage.username),
+				username: fromPage.username
+			} : null;
 		}
 		function storyPill(p) {
 			const noun = storyNoun(p);
@@ -2873,7 +2982,8 @@ a.tlink svg { width: 13px; height: 13px; }
 					kind: "pill",
 					label: "Drafting in RizzBot",
 					busy: true,
-					title: "RizzBot is drafting on her page. This fills in by itself."
+					title: "RizzBot is drafting on her page. Press to open her there; this fills in by itself.",
+					...r.slug ? { onClick: () => host.openTab(`${origin}/chats/${encodeURIComponent(r.slug)}`) } : {}
 				};
 				case "ready": return draftsPill(r.key, r.who, {
 					label: `Send this ${noun}`,
@@ -4902,7 +5012,9 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 					if (label) return {
 						kind: "pill",
 						label,
-						busy: true
+						busy: true,
+						title: "Press to open her in RizzBot",
+						onClick: () => host.openTab(girlUrl(origin, offer.slug))
 					};
 					return {
 						kind: "pill",
