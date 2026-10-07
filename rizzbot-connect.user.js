@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RizzBot Connect
 // @namespace    https://rizzbotproject.vercel.app
-// @version      1.17.1
+// @version      1.17.2
 // @author       rizzbotdev
 // @description  Bring girls into RizzBot from the sites you use in your browser. Instagram: add her from her profile, with your chat, and draft replies to the story or post you are looking at. Reads only what you can see; never likes, follows or opens a story for you. Tinder: a status badge on every match and chat, chats synced by themselves, and one-press import. Reads only what Tinder already loaded; never sends Tinder a request or presses its buttons.
 // @license      UNLICENSED
@@ -2401,7 +2401,10 @@ a.tlink svg { width: 13px; height: 13px; }
 			if (url) path = new URL(url, "https://www.instagram.com").pathname;
 		} catch {}
 		const own = str$1(content.xma_text_body) ?? str$1(node.text_body);
-		if (/^\/stories\//.test(path)) return own ? `[replied to a story] ${own}` : "[shared a story]";
+		if (/^\/stories\//.test(path)) {
+			if ((xma.is_quoted === true || node.content_type === "MONTAGE_SHARE_XMA") && own) return `[replied to a story] ${own}`;
+			return own ? `[shared a story] ${own}` : "[shared a story]";
+		}
 		const words = /^\/(reels?|clips?)\//.test(path) ? "[shared a reel]" : /^\/(p|tv)\//.test(path) ? "[shared a post]" : path && path !== "/" ? "[sent a link]" : "[shared a post]";
 		return own ? `${words} ${own}` : words;
 	}
@@ -2444,6 +2447,7 @@ a.tlink svg { width: 13px; height: 13px; }
 		};
 	}
 	var HANDLE = /^[a-z0-9._]{1,30}$/;
+	var olderOf = (info) => typeof info.has_next_page === "boolean" ? info.has_next_page : null;
 	var DmCapture = class {
 		now;
 		threads = [];
@@ -2541,7 +2545,7 @@ a.tlink svg { width: 13px; height: 13px; }
 			const conn = isObj(t.slide_messages) ? t.slide_messages : {};
 			this.addNodes(th, conn);
 			const info = isObj(conn.page_info) ? conn.page_info : {};
-			if (!th.pages) th.older = info.has_next_page === true;
+			if (!th.pages) th.older = olderOf(info);
 			th.detailAt = this.now();
 			return true;
 		}
@@ -2553,11 +2557,12 @@ a.tlink svg { width: 13px; height: 13px; }
 				idStr(outer.id),
 				...edges.map((e) => isObj(e.node) ? idStr(e.node.thread_fbid) : null)
 			].filter((x) => !!x);
-			const th = this.find(ids) ?? this.thread(current);
+			const known = this.find(ids);
+			const th = known ?? this.thread(current);
 			if (!th) return false;
-			for (const i of ids) th.aliases.add(i);
+			if (known) for (const i of ids) th.aliases.add(i);
 			this.addNodes(th, conn);
-			th.older = (isObj(conn.page_info) ? conn.page_info : {}).has_next_page === true;
+			th.older = olderOf(isObj(conn.page_info) ? conn.page_info : {});
 			th.pages++;
 			return true;
 		}
@@ -2629,6 +2634,7 @@ a.tlink svg { width: 13px; height: 13px; }
 			}
 			d.progress(messages.length, true, mark !== null);
 			const before = th.pages;
+			const had = th.nodes.size;
 			if (!d.scrollUp()) break;
 			let waited = 0;
 			while ((d.thread() ?? th).pages === before && waited < timing$2.pageWaitMs) {
@@ -2637,7 +2643,7 @@ a.tlink svg { width: 13px; height: 13px; }
 				waited += timing$2.pollMs;
 			}
 			if (d.stopped?.()) throw new SyncStopped();
-			if ((d.thread() ?? th).pages === before) {
+			if ((d.thread() ?? th).nodes.size === had) {
 				if (++quiet >= 4) break;
 				continue;
 			}
@@ -2754,12 +2760,9 @@ a.tlink svg { width: 13px; height: 13px; }
 			if (capture.ingest(json) && !held) scheduleRefresh();
 		});
 		function noteChats() {
-			const here = threadFromPath(win.location.pathname);
-			const th = dm.thread(here);
+			const th = dm.thread(threadFromPath(win.location.pathname));
 			if (!th?.her || th.group) return;
-			host.set(chatOfKey(th.her.id), th.key);
-			for (const id of new Set([here, th.key])) if (id && !host.get(whoKey(id), null)) host.set(whoKey(id), th.her);
-			if (!held) scheduleRefresh();
+			if (host.get(chatOfKey(th.her.id), null) !== th.key) host.set(chatOfKey(th.her.id), th.key);
 		}
 		const ig = createIgGet(pageFetch, () => ({
 			cookie: win.document.cookie,
@@ -3357,7 +3360,8 @@ a.tlink svg { width: 13px; height: 13px; }
 		function syncFromPage(urlId, full = false, fromLoad = false) {
 			held = true;
 			const th = dm.thread(urlId);
-			if (!fromLoad && (!th || Date.now() - th.detailAt > FRESH_MS)) {
+			const here = threadFromPath(win.location.pathname) === urlId;
+			if (!fromLoad && (!here || !th || Date.now() - th.detailAt > FRESH_MS)) {
 				host.set(SYNC_ON_LOAD, {
 					key: urlId,
 					full,
@@ -3373,12 +3377,13 @@ a.tlink svg { width: 13px; height: 13px; }
 						step: "Reloading the chat"
 					}
 				});
-				win.location.reload();
+				if (here) win.location.reload();
+				else win.location.assign(`/direct/t/${urlId}/`);
 				return;
 			}
 			syncChat(urlId, void 0, full);
 		}
-		async function syncWhenLoaded(urlId, full) {
+		async function syncWhenLoaded(urlId, full, expect) {
 			held = true;
 			panel.show({
 				kind: "card",
@@ -3393,7 +3398,11 @@ a.tlink svg { width: 13px; height: 13px; }
 			const end = Date.now() + CHAT_LOAD_MS;
 			for (let tick = 0; Date.now() < end; tick++) {
 				if (tick % 8 === 0 && dm.ingestDocument(win.document, urlId)) noteChats();
-				if (dm.thread(urlId)?.detailAt) return syncFromPage(urlId, full, true);
+				const th = dm.thread(urlId);
+				if (th?.detailAt) {
+					if (expect !== urlId && !th.aliases.has(expect)) return release();
+					return syncFromPage(urlId, full, true);
+				}
 				await sleep(250);
 			}
 			panel.show({
@@ -3406,7 +3415,7 @@ a.tlink svg { width: 13px; height: 13px; }
 					label: "Try again",
 					primary: true,
 					icon: "retry",
-					onClick: () => syncFromPage(urlId, full)
+					onClick: () => syncFromPage(expect, full)
 				}],
 				onClose: release
 			});
@@ -3418,8 +3427,9 @@ a.tlink svg { width: 13px; height: 13px; }
 			o.show("Reading your messages", .05);
 			let rounds = 0;
 			let scrolled = null;
+			let left = false;
 			const scrollUp = () => {
-				if (threadFromPath(win.location.pathname) !== urlId) return false;
+				if (threadFromPath(win.location.pathname) !== urlId) return !(left = true);
 				const el = chatPane(win);
 				if (!el) return false;
 				if (scrolled?.el !== el) scrolled = {
@@ -3459,6 +3469,7 @@ a.tlink svg { width: 13px; height: 13px; }
 				const back = scrolled;
 				if (back) back.el.scrollTop = back.top;
 			}
+			if (left) throw new InstagramError("failed", "You moved to another chat while this one was being read, so nothing was sent. Try again to go back to it and sync it.");
 			const { truncated, capped, reached, ...chat } = read;
 			ctx.handle = chat.her.username;
 			const decision = sendDecision({
@@ -3490,8 +3501,14 @@ a.tlink svg { width: 13px; height: 13px; }
 				capped
 			};
 		}
+		let mergeAnswer = null;
 		function askMerge(name, app, turns) {
-			return new Promise((resolve) => {
+			return new Promise((done) => {
+				const resolve = (add) => {
+					mergeAnswer = null;
+					done(add);
+				};
+				mergeAnswer = resolve;
 				panel.show({
 					kind: "card",
 					keep: true,
@@ -3673,11 +3690,12 @@ a.tlink svg { width: 13px; height: 13px; }
 				host.del(SYNC_ON_LOAD);
 				const here = threadFromPath(win.location.pathname);
 				const at = typeof pending.at === "number" ? pending.at : 0;
-				if (here && Date.now() - at < 6e4 && (pending.key === here || Date.now() - at < 2e4)) syncWhenLoaded(here, pending.full === true);
+				if (here && typeof pending.key === "string" && Date.now() - at < 6e4) syncWhenLoaded(here, pending.full === true, pending.key);
 			}
 			refresh();
 			onUrlChange$1(win, () => {
 				profileSince = Date.now();
+				mergeAnswer?.(false);
 				if (!panel.isWorking()) held = false;
 				refresh();
 				win.setTimeout(refresh, 6100);
