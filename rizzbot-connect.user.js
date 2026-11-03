@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RizzBot Connect
 // @namespace    https://rizzbotproject.vercel.app
-// @version      1.17.3
+// @version      1.18.0
 // @author       rizzbotdev
 // @description  Bring girls into RizzBot from the sites you use in your browser. Instagram: add her from her profile, with your chat, and draft replies to the story or post you are looking at. Reads only what you can see; never likes, follows or opens a story for you. Tinder: a status badge on every match and chat, chats synced by themselves, and one-press import. Reads only what Tinder already loaded; never sends Tinder a request or presses its buttons.
 // @license      UNLICENSED
@@ -621,6 +621,24 @@ a.tlink svg { width: 13px; height: 13px; }
 .btn.quiet:hover { color: #fff; background: none; }
 .btn:disabled, .btn:disabled:hover { cursor: default; opacity: .6; color: #8a8a93; transform: none; }
 .spin { width: 16px; height: 16px; border: 2px solid rgb(255 255 255 / .2); border-top-color: #fff; border-radius: 50%; animation: s .8s linear infinite; }
+/* an answer card (a chat sync's result): compact, the logo at the left, the
+   title after its dot, the sentence with the link beside it (the gallery's
+   "Connect cards", RizzBot docs/design/chat-sync-screens.html) */
+.mod.answer { max-width: 380px; padding: 18px 48px 18px 18px; text-align: left; }
+.ans { display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 12px; row-gap: 3px; align-items: center; }
+.ans > :not(.adisc) { grid-column: 2; }
+.adisc { grid-row: span 2; width: 36px; height: 36px; border-radius: 50%; background: #0b0b0d; display: grid; place-items: center; box-shadow: 0 0 0 2px rgb(244 63 94 / .9); }
+.adisc img { width: 20px; height: 20px; display: block; }
+h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pretty; }
+.adot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; }
+.adot.green { background: hsl(152 60% 50%); }
+.adot.violet { background: hsl(258 90% 70%); }
+.adot.amber { background: hsl(38 92% 55%); }
+.adot.red { background: hsl(0 72% 60%); }
+.adesc { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-size: 13px; line-height: 1.4; color: var(--muted); }
+.adesc a.tlink { margin-top: 0; }
+.anote { font-size: 12.5px; line-height: 1.4; color: #7d7d86; margin-top: 3px; }
+.mod.answer .content { margin-top: 14px; }
 
 @keyframes s { to { transform: rotate(360deg); } }
 
@@ -1143,7 +1161,35 @@ a.tlink svg { width: 13px; height: 13px; }
 				x.addEventListener("click", () => this.close());
 				mod.appendChild(x);
 			}
-			if (state.portrait) {
+			const textLink = (l) => {
+				const a = el("a", "tlink", l.label);
+				a.insertAdjacentHTML("beforeend", SVG.open);
+				a.href = l.href;
+				a.target = "_blank";
+				a.rel = "noopener";
+				return a;
+			};
+			const sentence = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+			if (state.dot) {
+				mod.classList.add("answer");
+				const ans = el("div", "ans");
+				const disc = el("span", "adisc");
+				disc.appendChild(logo());
+				ans.appendChild(disc);
+				const h = el("h3", "atitle");
+				const dot = el("span", `adot ${state.dot}`);
+				dot.setAttribute("aria-hidden", "true");
+				h.appendChild(dot);
+				h.appendChild(this.doc.createTextNode(state.title));
+				ans.appendChild(h);
+				const [first, ...more] = state.text ?? [];
+				const row = el("div", "adesc");
+				if (first) row.appendChild(el("span", void 0, sentence(first)));
+				if (state.textLink) row.appendChild(textLink(state.textLink));
+				if (row.childElementCount) ans.appendChild(row);
+				for (const t of more) ans.appendChild(el("div", "anote", sentence(t)));
+				mod.appendChild(ans);
+			} else if (state.portrait) {
 				const pr = el("div", "portrait");
 				const face = (src, cls, initial) => {
 					if (src) {
@@ -1168,23 +1214,18 @@ a.tlink svg { width: 13px; height: 13px; }
 				}
 				mod.appendChild(mark);
 			}
-			mod.appendChild(el("h3", void 0, state.title));
-			if (state.meta?.length) {
-				const m = el("div", "meta");
-				state.meta.forEach((t, k) => {
-					if (k) m.appendChild(el("i"));
-					m.appendChild(el("span", void 0, t));
-				});
-				mod.appendChild(m);
-			}
-			for (const t of state.text ?? []) mod.appendChild(el("p", void 0, t.charAt(0).toUpperCase() + t.slice(1)));
-			if (state.textLink) {
-				const a = el("a", "tlink", state.textLink.label);
-				a.insertAdjacentHTML("beforeend", SVG.open);
-				a.href = state.textLink.href;
-				a.target = "_blank";
-				a.rel = "noopener";
-				mod.appendChild(a);
+			if (!state.dot) {
+				mod.appendChild(el("h3", void 0, state.title));
+				if (state.meta?.length) {
+					const m = el("div", "meta");
+					state.meta.forEach((t, k) => {
+						if (k) m.appendChild(el("i"));
+						m.appendChild(el("span", void 0, t));
+					});
+					mod.appendChild(m);
+				}
+				for (const t of state.text ?? []) mod.appendChild(el("p", void 0, sentence(t)));
+				if (state.textLink) mod.appendChild(textLink(state.textLink));
 			}
 			const content = el("div", "content");
 			let input = null;
@@ -1245,7 +1286,7 @@ a.tlink svg { width: 13px; height: 13px; }
 				}
 				content.appendChild(list);
 			}
-			if (state.count) {
+			if (state.count && !state.dot) {
 				const c = el("div", "count", String(state.count.value));
 				c.appendChild(el("small", void 0, state.count.label));
 				content.appendChild(c);
@@ -1353,11 +1394,12 @@ a.tlink svg { width: 13px; height: 13px; }
 	async function fetchDrafts(api, who) {
 		return readDrafts(await api.call("GET", draftsPath(who), void 0, 2e4));
 	}
-	async function sendDraft(api, slug, drafts, line) {
+	async function sendDraft(api, slug, drafts, line, app) {
 		await api.call("POST", `/api/girls/${encodeURIComponent(slug)}/sent`, {
 			text: line.text,
 			suggestion_id: drafts.id,
-			candidate_index: line.index
+			candidate_index: line.index,
+			app
 		}, 3e4);
 	}
 	function draftsLabel(a) {
@@ -1550,7 +1592,7 @@ a.tlink svg { width: 13px; height: 13px; }
 			this.states.set(line.index, { kind: "sending" });
 			this.o.onChange();
 			try {
-				await sendDraft(this.o.api(), answer.girl.slug, answer.drafts, line);
+				await sendDraft(this.o.api(), answer.girl.slug, answer.drafts, line, this.o.app);
 				if (this.open === key) this.states.set(line.index, { kind: "sent" });
 				this.o.watch.refresh(key, who, true);
 			} catch (e) {
@@ -2374,6 +2416,10 @@ a.tlink svg { width: 13px; height: 13px; }
 	}
 	var CHAT_MARK = "__rizzbot_instagram_chat__";
 	var HEART = /^❤️?$/;
+	var TEXT_MAX = 4e3;
+	var ID_MAX = 80;
+	var REACTIONS_MAX = 50;
+	var EMOJI_MAX = 32;
 	var SyncStopped = class extends Error {
 		constructor() {
 			super("Stopped.");
@@ -2389,35 +2435,76 @@ a.tlink svg { width: 13px; height: 13px; }
 	var isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 	var str$1 = (v) => typeof v === "string" && v.trim() ? v.trim() : null;
 	var idStr = (v) => v != null && /^\d{1,40}$/.test(String(v)) ? String(v) : null;
-	var CONTENT_WORDS = {
-		SlideMessageImageContent: "[sent a photo]",
-		SlideMessageVideosContent: "[sent a video]",
-		SlideMessageAudiosContent: "[sent a voice message]",
-		SlideMessageStickerContent: "[sent a sticker]",
-		SlideMessageAnimatedImageContent: "[sent a gif]"
+	var CONTENT_KINDS = {
+		SlideMessageImageContent: "photo",
+		SlideMessageVideosContent: "video",
+		SlideMessageAudiosContent: "voice note",
+		SlideMessageStickerContent: "sticker",
+		SlideMessageAnimatedImageContent: "gif"
 	};
-	function shareText(content, node) {
+	function cut$1(s, max) {
+		if (s.length <= max) return s;
+		const t = s.slice(0, max);
+		const last = t.charCodeAt(t.length - 1);
+		return last >= 55296 && last <= 56319 ? t.slice(0, -1) : t;
+	}
+	function shareOf(content, node) {
 		const xma = isObj(content.xma) ? content.xma : {};
 		let path = "";
 		try {
 			const url = str$1(xma.target_url);
 			if (url) path = new URL(url, "https://www.instagram.com").pathname;
 		} catch {}
-		const own = str$1(content.xma_text_body) ?? str$1(node.text_body);
+		const own = str$1(content.xma_text_body) ?? str$1(node.text_body) ?? "";
 		if (/^\/stories\//.test(path)) {
-			if ((xma.is_quoted === true || node.content_type === "MONTAGE_SHARE_XMA") && own) return `[replied to a story] ${own}`;
-			return own ? `[shared a story] ${own}` : "[shared a story]";
+			if (xma.is_quoted === true || node.content_type === "MONTAGE_SHARE_XMA") return {
+				text: own,
+				story: { kind: /^\/stories\/highlights\//.test(path) ? "highlight" : "story" }
+			};
+			return {
+				text: own,
+				media: { kind: "shared story" }
+			};
 		}
-		const words = /^\/(reels?|clips?)\//.test(path) ? "[shared a reel]" : /^\/(p|tv)\//.test(path) ? "[shared a post]" : path && path !== "/" ? "[sent a link]" : "[shared a post]";
-		return own ? `${words} ${own}` : words;
+		return {
+			text: own,
+			media: { kind: /^\/(reels?|clips?)\//.test(path) ? "shared reel" : /^\/(p|tv)\//.test(path) ? "shared post" : path && path !== "/" ? "shared link" : "shared post" }
+		};
+	}
+	function reactionsOf(node, sender, from) {
+		const other = from === "him" ? "her" : "him";
+		const out = [];
+		for (const r of Array.isArray(node.reactions) ? node.reactions : []) {
+			if (out.length >= REACTIONS_MAX) break;
+			if (!isObj(r)) continue;
+			const emoji = typeof r.reaction === "string" ? r.reaction.trim() : "";
+			const by = idStr(r.sender_fbid);
+			if (!emoji || emoji.length > EMOJI_MAX || by === null) continue;
+			out.push({
+				emoji,
+				from: by === sender ? from : other
+			});
+		}
+		return out;
+	}
+	var isMessageId = (v) => typeof v === "string" && v.length <= ID_MAX && /^mid\.\S+$/.test(v);
+	function replyToOf(node, own) {
+		const r = isObj(node.replied_to_message) ? node.replied_to_message : null;
+		const candidates = [
+			node.replied_to_message_id,
+			node.reply_to_message_id,
+			r?.message_id,
+			r && isObj(r.message) ? r.message.message_id : void 0
+		];
+		for (const c of candidates) if (isMessageId(c) && c !== own) return c;
+		return null;
 	}
 	function slideMessageOf(node, viewerFbid, herIgid = null) {
 		if (!isObj(node)) return null;
 		const id = str$1(node.message_id);
 		const sender = idStr(node.sender_fbid);
 		const ts = Number(node.timestamp_ms);
-		if (!id || !sender || !Number.isFinite(ts) || ts <= 0) return null;
-		if (node.tombstone_reason != null) return null;
+		if (!id || id.length > ID_MAX || !sender || !Number.isFinite(ts) || ts <= 0) return null;
 		const content = isObj(node.content) ? node.content : {};
 		const type = str$1(content.__typename) ?? "";
 		if (type === "SlideMessageAdminText") return null;
@@ -2428,25 +2515,39 @@ a.tlink svg { width: 13px; height: 13px; }
 			if (!herIgid || !igid) return null;
 			mine = igid !== herIgid;
 		}
-		let text;
-		if (type === "SlideMessageText") text = str$1(content.text_body) ?? str$1(node.text_body);
-		else if (type === "SlideMessageXMAContent") text = shareText(content, node);
+		const from = mine ? "him" : "her";
+		let body;
+		if (node.tombstone_reason != null) body = {
+			text: "",
+			unsent: true
+		};
+		else if (type === "SlideMessageText") {
+			const words = str$1(content.text_body) ?? str$1(node.text_body);
+			if (!words) return null;
+			body = { text: words };
+		} else if (type === "SlideMessageXMAContent") body = shareOf(content, node);
 		else {
-			const words = CONTENT_WORDS[type];
+			const kind = CONTENT_KINDS[type];
 			const own = str$1(node.text_body);
-			text = words ? own ? `${words} ${own}` : words : own ?? "[sent something]";
+			body = kind ? {
+				text: own ?? "",
+				media: { kind }
+			} : { text: own ?? "[sent something]" };
 		}
-		if (!text) return null;
-		const liked = (Array.isArray(node.reactions) ? node.reactions.filter(isObj) : []).some((r) => {
-			const by = idStr(r.sender_fbid);
-			return typeof r.reaction === "string" && HEART.test(r.reaction.trim()) && by !== null && by !== sender;
-		});
+		const reactions = reactionsOf(node, sender, from);
+		const liked = reactions.some((r) => r.from !== from && HEART.test(r.emoji));
+		const replyTo = replyToOf(node, id);
 		return {
 			id,
-			from: mine ? "him" : "her",
-			text: text.slice(0, 4e3),
+			from,
+			text: cut$1(body.text, TEXT_MAX),
 			at: new Date(ts).toISOString(),
-			...liked ? { liked: true } : {}
+			...liked ? { liked: true } : {},
+			...reactions.length ? { reactions } : {},
+			...body.unsent ? { unsent: true } : {},
+			...replyTo ? { reply_to: replyTo } : {},
+			...body.media ? { media: body.media } : {},
+			...body.story ? { story: body.story } : {}
 		};
 	}
 	var HANDLE = /^[a-z0-9._]{1,30}$/;
@@ -2657,7 +2758,7 @@ a.tlink svg { width: 13px; height: 13px; }
 		d.progress(messages.length, false, mark !== null);
 		return {
 			[CHAT_MARK]: 1,
-			version: 1,
+			version: 2,
 			her,
 			messages,
 			truncated: !complete,
@@ -2666,7 +2767,6 @@ a.tlink svg { width: 13px; height: 13px; }
 		};
 	}
 	var ReadCutShort = class extends Error {};
-	var ChatSkipped = class extends Error {};
 	function sendDecision(r) {
 		if (r.partial && !r.reached) return r.truncated ? { send: false } : {
 			send: true,
@@ -2680,6 +2780,99 @@ a.tlink svg { width: 13px; height: 13px; }
 	function offerNewGirl(status, body) {
 		if (status === 404) return true;
 		return status === 409 && !body?.busy && !body?.code;
+	}
+	var word = (v) => typeof v === "string" && v.trim() ? v.trim() : null;
+	var count = (v) => typeof v === "number" && Number.isInteger(v) && v > 0 ? v : 0;
+	function answerOf(status, body) {
+		if (!body || typeof body !== "object") return null;
+		const ok = status >= 200 && status < 300;
+		if (!ok && (body.status === "update_connect" || body.update_connect === true)) return { kind: "update_connect" };
+		const slug = word(body.slug);
+		if (!slug) return null;
+		const name = word(body.name) ?? slug;
+		if (ok && body.status === "saved") {
+			const added = count(body.added);
+			return {
+				kind: "saved",
+				slug,
+				name,
+				added,
+				wrote: typeof body.wrote === "boolean" ? body.wrote : added > 0
+			};
+		}
+		if (ok && body.status === "pending") return {
+			kind: "pending",
+			slug,
+			name
+		};
+		if (!ok && body.status === "slot_taken") return {
+			kind: "slot_taken",
+			slug,
+			name,
+			source: word(body.source) ?? ""
+		};
+		return null;
+	}
+	var WAITING = {
+		screenshots: "Your screenshots are waiting to be added",
+		"chat-file": "Your chat file is waiting to be added",
+		video: "Your recording is waiting to be added",
+		instagram: "An Instagram sync is waiting to be added",
+		tinder: "Her Tinder chat is waiting to be added",
+		"tinder-paste": "Your Tinder copy is waiting to be added"
+	};
+	function waitingWords(source) {
+		return WAITING[source] ?? "A change is waiting to be added";
+	}
+	function newMessages(n) {
+		return n === 0 ? "no new messages" : `${n} new ${n === 1 ? "message" : "messages"}`;
+	}
+	function answerCard(a, origin, read) {
+		const page = (slug, review = false) => `${origin}/chats/${encodeURIComponent(slug)}${review ? "?review=1" : ""}`;
+		switch (a.kind) {
+			case "saved": {
+				const lines = [`${a.name} is up to date`];
+				if (read?.capped) lines.push(`RizzBot has the newest ${read.max.toLocaleString("en-US")} messages of this chat. One sync reads no further back.`);
+				else if (read?.truncated) lines.push("Instagram stopped loading older messages, so some may be missing. Resync all to read the rest.");
+				return {
+					dot: "green",
+					title: `Synced · ${newMessages(a.added)}`,
+					lines,
+					link: {
+						label: a.wrote ? "Undo in RizzBot" : "Open in RizzBot",
+						href: page(a.slug)
+					},
+					resync: !!read && (read.partial || read.truncated) && !read.capped
+				};
+			}
+			case "pending": return {
+				dot: "violet",
+				title: "Review waiting",
+				lines: ["This sync needs a look before it's saved"],
+				link: {
+					label: "Open RizzBot",
+					href: page(a.slug, true)
+				},
+				resync: false
+			};
+			case "slot_taken": return {
+				dot: "amber",
+				title: "Finish the review waiting on her page first",
+				lines: [waitingWords(a.source)],
+				link: {
+					label: "Open RizzBot",
+					href: page(a.slug, true)
+				},
+				resync: false
+			};
+			case "update_connect": return {
+				dot: "red",
+				title: "Update RizzBot Connect",
+				lines: ["Tampermonkey, Utilities, Check for userscript updates, then sync again"],
+				link: null,
+				resync: false
+			};
+		}
 	}
 	var instagram_exports = __exportAll({
 		ago: () => ago,
@@ -2746,6 +2939,7 @@ a.tlink svg { width: 13px; height: 13px; }
 			doc: win.document,
 			api: () => createApi(host),
 			watch: drafts,
+			app: "instagram",
 			onChange: () => refresh()
 		});
 		function draftsPill(key, who, extra) {
@@ -3459,11 +3653,10 @@ a.tlink svg { width: 13px; height: 13px; }
 						const q = `ig_id=${encodeURIComponent(her.id)}&username=${encodeURIComponent(her.username)}`;
 						try {
 							const r = await api.call("GET", `/api/girls/instagram-chat?${q}`, void 0, 2e4);
-							if (r.first_merge && !await askMerge(r.name, r.first_merge.app, r.first_merge.turns)) throw new ChatSkipped();
 							partial = !o.full && !!r.mark;
 							return o.full ? null : r.mark ?? null;
 						} catch (e) {
-							if (e instanceof ApiError || e instanceof NotConnectedError || e instanceof ChatSkipped) throw e;
+							if (e instanceof ApiError || e instanceof NotConnectedError) throw e;
 							throw new ApiError("RizzBot could not be reached. Try again in a minute.", 0, null);
 						}
 					}
@@ -3483,57 +3676,50 @@ a.tlink svg { width: 13px; height: 13px; }
 			if (!decision.send) throw new ReadCutShort();
 			partial = !decision.full;
 			o.show("Sending your chat", .92, true);
-			const res = await api.call("POST", "/api/girls/instagram-chat", { chat: {
+			const body = await api.call("POST", "/api/girls/instagram-chat", { chat: {
 				...chat,
 				full: decision.full
 			} }, 6e4);
-			host.set(syncedKey(urlId), Date.now());
-			host.set(whoKey(urlId), {
-				id: chat.her.id,
-				username: chat.her.username
-			});
-			drafts.refresh(`t:${urlId}`, {
-				ig_id: chat.her.id,
-				ig_user: chat.her.username
-			}, true);
+			const answer = answerOf(200, body);
+			if (!answer) throw new ApiError("RizzBot answered something unexpected. Try again in a minute.", 200, body);
+			if (answer.kind === "saved") {
+				host.set(syncedKey(urlId), Date.now());
+				host.set(whoKey(urlId), {
+					id: chat.her.id,
+					username: chat.her.username
+				});
+				drafts.refresh(`t:${urlId}`, {
+					ig_id: chat.her.id,
+					ig_user: chat.her.username
+				}, true);
+			}
 			return {
-				res,
+				answer,
 				partial,
 				scanned: chat.messages.length,
 				truncated,
 				capped
 			};
 		}
-		let mergeAnswer = null;
-		function askMerge(name, app, turns) {
-			return new Promise((done) => {
-				const resolve = (add) => {
-					mergeAnswer = null;
-					done(add);
-				};
-				mergeAnswer = resolve;
-				panel.show({
-					kind: "card",
-					keep: true,
-					title: "Add your Instagram chat too?",
-					text: [`${name} already has ${turns} ${turns === 1 ? "message" : "messages"} from ${appName(app)}. Your Instagram messages go after them.`],
-					buttons: [{
-						label: "Add after them",
-						primary: true,
-						icon: "plus",
-						onClick: () => resolve(true)
-					}, {
-						label: "Skip chat",
-						quiet: true,
-						onClick: () => resolve(false)
-					}],
-					onClose: () => resolve(false)
-				});
+		function showAnswer(a, urlId, read) {
+			const card = answerCard(a, createApi(host).origin, read);
+			panel.show({
+				kind: "card",
+				dot: card.dot,
+				title: card.title,
+				text: card.lines,
+				...card.link ? { textLink: card.link } : {},
+				buttons: card.resync ? [{
+					label: "Resync all",
+					quiet: true,
+					icon: "sync",
+					onClick: () => syncFromPage(urlId, true)
+				}] : [],
+				onClose: release
 			});
 		}
 		async function syncChat(urlId, knownHandle, full = false) {
 			held = true;
-			const api = createApi(host);
 			const ctx = { handle: knownHandle ?? "" };
 			let stop = false;
 			let last = [
@@ -3569,42 +3755,23 @@ a.tlink svg { width: 13px; height: 13px; }
 				});
 			};
 			try {
-				const { res, partial, truncated, capped } = await readAndSend(urlId, {
+				const { answer, partial, truncated, capped } = await readAndSend(urlId, {
 					full,
 					show,
 					ctx,
 					stopped: () => stop
 				});
-				const resync = [{
-					label: "Resync all",
-					quiet: true,
-					icon: "sync",
-					onClick: () => syncFromPage(urlId, true)
-				}];
-				panel.show({
-					kind: "card",
-					tone: "ok",
-					icon: truncated && !capped ? "warn" : "ok",
-					title: res.added ? "Chat synced" : truncated && !capped ? "Chat read in part" : "Already up to date",
-					...res.added ? { count: {
-						value: res.added,
-						label: res.added === 1 ? "new message" : "new messages"
-					} } : {},
-					text: capped ? [`RizzBot has the newest ${MAX_MESSAGES.toLocaleString("en-US")} messages of this chat. One sync reads no further back.`] : truncated ? ["Instagram stopped loading older messages, so some may be missing. Resync all to read the rest."] : res.added ? [] : ["RizzBot has every message."],
-					buttons: (partial || truncated) && !capped ? resync : [],
-					link: {
-						label: "Open in RizzBot",
-						icon: "open",
-						first: true,
-						href: `${api.origin}/chats/${encodeURIComponent(res.slug)}`
-					},
-					onClose: release
+				showAnswer(answer, urlId, {
+					partial,
+					truncated,
+					capped,
+					max: MAX_MESSAGES
 				});
 			} catch (e) {
-				if (e instanceof ChatSkipped || e instanceof SyncStopped) {
+				if (e instanceof SyncStopped) {
 					panel.show({
 						kind: "card",
-						title: e instanceof SyncStopped ? "Sync stopped" : "Chat not synced",
+						title: "Sync stopped",
 						text: ["Nothing in RizzBot was changed."],
 						onClose: release
 					});
@@ -3626,6 +3793,8 @@ a.tlink svg { width: 13px; height: 13px; }
 					});
 					return;
 				}
+				const refused = e instanceof ApiError ? answerOf(e.status, e.body) : null;
+				if (refused) return showAnswer(refused, urlId);
 				const needsProfile = e instanceof ApiError && e.status === 404 && e.body?.needs_profile === true;
 				const said = e instanceof ApiError && typeof e.body?.username === "string" ? e.body.username : ctx.handle;
 				const who = /^[a-z0-9._]{1,30}$/i.test(said ?? "") ? said : "";
@@ -3698,7 +3867,6 @@ a.tlink svg { width: 13px; height: 13px; }
 			refresh();
 			onUrlChange$1(win, () => {
 				profileSince = Date.now();
-				mergeAnswer?.(false);
 				if (!panel.isWorking()) held = false;
 				refresh();
 				win.setTimeout(refresh, 6100);
@@ -5072,6 +5240,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			doc,
 			api: () => createApi(host),
 			watch: drafts,
+			app: "tinder",
 			onChange: () => refresh()
 		});
 		let askingToConnect = false;
