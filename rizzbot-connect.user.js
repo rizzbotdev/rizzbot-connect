@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RizzBot Connect
 // @namespace    https://rizzbotproject.vercel.app
-// @version      1.18.1
+// @version      1.19.0
 // @author       rizzbotdev
 // @description  Bring girls into RizzBot from the sites you use in your browser. Instagram: add her from her profile, with your chat, and draft replies to the story or post you are looking at. Reads only what you can see; never likes, follows or opens a story for you. Tinder: a status badge on every match and chat, chats synced by themselves, and one-press import. Reads only what Tinder already loaded; never sends Tinder a request or presses its buttons.
 // @license      UNLICENSED
@@ -511,6 +511,9 @@
 		]) if (edges[k] !== void 0) s += `;${k}:${edges[k]}`;
 		return `${s};z-index:2147483647`;
 	}
+	function bubblesOf(text) {
+		return text.split("\n").map((b) => b.trim()).filter(Boolean);
+	}
 	var CSS$1 = `
 :host { all: initial; }
 .wrap, .bwrap {
@@ -673,9 +676,14 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 /* the suggestion green of her RizzBot page */
 /* RizzBot's own suggestion bubble (globals.css .bubble-suggest): the deep
    emerald, so white text reads at full strength (the bright green washed it out) */
-.bub { max-width: 100%; padding: 7px 12px; border-radius: 16px 16px 6px 16px; background: linear-gradient(135deg, hsl(152 65% 34%), hsl(160 70% 28%)); color: #fff;
+.bub { max-width: 100%; margin: 0; border: 0; padding: 7px 12px; border-radius: 16px 16px 6px 16px; background: linear-gradient(135deg, hsl(152 65% 34%), hsl(160 70% 28%)); color: #fff;
   font-family: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 14px; font-weight: 500; line-height: 1.4;
-  white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; -webkit-font-smoothing: auto; }
+  white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; -webkit-font-smoothing: auto; cursor: pointer; transition: filter .15s; }
+/* each bubble is its own Copy: brighter under the cursor, never lifted */
+.bub:hover { filter: brightness(1.12); }
+.bub:active { filter: brightness(1.3); }
+.bub:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.bub svg { width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; }
 .why { font-size: 12px; color: #fca5a5; }
 .ib { width: 30px; height: 30px; border-radius: 9px; border: 0; display: grid; place-items: center; background: rgb(255 255 255 / .07); color: #d6d6dc; cursor: pointer; flex: none; transition: background .15s, color .15s; }
 .ib:hover:not(:disabled) { background: rgb(255 255 255 / .14); color: #fff; }
@@ -705,7 +713,6 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 		retry: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`,
 		plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
 		down: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`,
-		copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`,
 		send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.54 21.69a.5.5 0 0 0 .94-.03l6.5-19a.5.5 0 0 0-.64-.64l-19 6.5a.5.5 0 0 0-.02.94l7.93 3.18a2 2 0 0 1 1.11 1.11z"/><path d="m21.85 2.15-10.94 10.94"/></svg>`,
 		user: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>`
 	};
@@ -1014,10 +1021,19 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 					row.appendChild(g);
 				}
 				const bubbles = el("div", "bubbles");
-				for (const b of line.text.split("\n").map((x) => x.trim()).filter(Boolean)) bubbles.appendChild(el("div", "bub", b));
+				bubblesOf(line.text).forEach((b, j) => {
+					const copied = line.copied?.includes(j) ?? false;
+					const btn = el("button", "bub", b);
+					btn.type = "button";
+					btn.dataset.k = `b${i}.${j}`;
+					btn.title = copied ? "Copied" : "Copy";
+					btn.setAttribute("aria-label", `${copied ? "Copied" : "Copy"}: ${b}`);
+					if (copied) btn.insertAdjacentHTML("afterbegin", SVG.check);
+					btn.addEventListener("click", () => now()?.onCopy(i, j));
+					bubbles.appendChild(btn);
+				});
 				if (line.state === "failed" && line.why) bubbles.appendChild(el("div", "why", line.why));
 				row.appendChild(bubbles);
-				row.appendChild(icon(line.copied ? " done" : "", line.copied ? SVG.ok : SVG.copy, line.copied ? "Copied" : "Copy", () => now()?.onCopy(i), false, `copy${i}`));
 				const busy = line.state === "sending";
 				const done = line.state === "sent";
 				row.appendChild(icon(done ? " done" : "", busy ? `<span class="spin"></span>` : done ? SVG.ok : SVG.send, done ? "Recorded as sent" : busy ? "Recording it" : "I sent this", () => now()?.onSent(i), busy || done, `sent${i}`));
@@ -1049,7 +1065,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			wrap.appendChild(box);
 			this.placeDrop();
 			this.listenForOutside(true);
-			if (refocus) refocusIn(wrap, refocus) || refocusIn(wrap, refocus.replace("sent", "copy"));
+			if (refocus) refocusIn(wrap, refocus) || refocusIn(wrap, refocus.replace(/^sent(\d+)$/, "b$1.0"));
 		}
 		render(state) {
 			const steady = this.state.kind === "card" && state.kind === "card" && !this.dismissed;
@@ -1399,6 +1415,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			text: line.text,
 			suggestion_id: drafts.id,
 			candidate_index: line.index,
+			bubbles: true,
 			...app ? { app } : {}
 		}, 3e4);
 	}
@@ -1486,7 +1503,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 		open = null;
 		snapshot = null;
 		states = new Map();
-		copied = null;
+		copied = new Map();
 		constructor(o) {
 			this.o = o;
 		}
@@ -1516,12 +1533,13 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				onToggle: () => this.open === key ? this.close(true) : this.openFor(key, who, answer),
 				lines: d.lines.map((l) => {
 					const s = isOpen ? this.states.get(l.index) : void 0;
+					const copied = isOpen ? this.copied.get(l.index) : void 0;
 					return {
 						text: l.text,
 						grade: l.grade ?? (d.grading ? "pending" : null),
 						state: s?.kind ?? "idle",
 						...s?.kind === "failed" ? { why: s.why } : {},
-						...isOpen && this.copied === l.index ? { copied: true } : {}
+						...copied?.size ? { copied: [...copied] } : {}
 					};
 				}),
 				note: d.grading && !d.lines.every((l) => l.grade) ? {
@@ -1536,7 +1554,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 						extra.onClick();
 					}
 				} : null,
-				onCopy: (i) => void this.copy(key, d.lines[i]),
+				onCopy: (i, j) => void this.copy(key, d.lines[i], j),
 				onSent: (i) => void this.sent(key, who, d.lines[i], sentOn),
 				onClose: () => this.close(true)
 			};
@@ -1551,7 +1569,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 		openFor(key, who, answer) {
 			if (this.open !== key) {
 				this.states.clear();
-				this.copied = null;
+				this.copied.clear();
 			}
 			this.open = key;
 			this.whos.set(key, who);
@@ -1569,18 +1587,22 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			this.open = null;
 			this.snapshot = null;
 			this.states.clear();
-			this.copied = null;
+			this.copied.clear();
 			if (redraw) this.o.onChange();
 		}
 		whos = new Map();
 		whoFor(key) {
 			return this.whos.get(key) ?? null;
 		}
-		async copy(key, line) {
+		async copy(key, line, bubble) {
 			if (this.open !== key) return;
-			if (await copyText(this.o.doc, line.text)) {
+			const text = bubblesOf(line.text)[bubble];
+			if (text === void 0) return;
+			if (await copyText(this.o.doc, text)) {
 				if (this.open !== key) return;
-				this.copied = line.index;
+				const done = this.copied.get(line.index) ?? new Set();
+				done.add(bubble);
+				this.copied.set(line.index, done);
 				this.o.onChange();
 			}
 		}
