@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RizzBot Connect
 // @namespace    https://rizzbotproject.vercel.app
-// @version      1.18.0
+// @version      1.18.1
 // @author       rizzbotdev
 // @description  Bring girls into RizzBot from the sites you use in your browser. Instagram: add her from her profile, with your chat, and draft replies to the story or post you are looking at. Reads only what you can see; never likes, follows or opens a story for you. Tinder: a status badge on every match and chat, chats synced by themselves, and one-press import. Reads only what Tinder already loaded; never sends Tinder a request or presses its buttons.
 // @license      UNLICENSED
@@ -1399,7 +1399,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			text: line.text,
 			suggestion_id: drafts.id,
 			candidate_index: line.index,
-			app
+			...app ? { app } : {}
 		}, 3e4);
 	}
 	function draftsLabel(a) {
@@ -1493,7 +1493,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 		isOpen() {
 			return this.open !== null;
 		}
-		pill(key, who, origin, extra) {
+		pill(key, who, origin, extra, app) {
 			if (this.open !== null && this.open !== key) this.close(false);
 			const fresh = this.o.watch.get(key);
 			let answer = fresh;
@@ -1509,6 +1509,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				return null;
 			}
 			const d = answer.drafts;
+			const sentOn = app === void 0 || d.replies_to ? this.o.app : app;
 			const isOpen = this.open === key;
 			const drop = {
 				open: isOpen,
@@ -1536,7 +1537,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 					}
 				} : null,
 				onCopy: (i) => void this.copy(key, d.lines[i]),
-				onSent: (i) => void this.sent(key, who, d.lines[i]),
+				onSent: (i) => void this.sent(key, who, d.lines[i], sentOn),
 				onClose: () => this.close(true)
 			};
 			return {
@@ -1583,7 +1584,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				this.o.onChange();
 			}
 		}
-		async sent(key, who, line) {
+		async sent(key, who, line, app) {
 			this.whos.set(key, who);
 			const answer = this.snapshot?.key === key ? this.snapshot.answer : this.o.watch.get(key);
 			if (this.open !== key || !answer?.girl || !answer.drafts) return;
@@ -1592,7 +1593,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			this.states.set(line.index, { kind: "sending" });
 			this.o.onChange();
 			try {
-				await sendDraft(this.o.api(), answer.girl.slug, answer.drafts, line, this.o.app);
+				await sendDraft(this.o.api(), answer.girl.slug, answer.drafts, line, app);
 				if (this.open === key) this.states.set(line.index, { kind: "sent" });
 				this.o.watch.refresh(key, who, true);
 			} catch (e) {
@@ -2457,7 +2458,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 		} catch {}
 		const own = str$1(content.xma_text_body) ?? str$1(node.text_body) ?? "";
 		if (/^\/stories\//.test(path)) {
-			if (xma.is_quoted === true || node.content_type === "MONTAGE_SHARE_XMA") return {
+			if (xma.is_quoted === true) return {
 				text: own,
 				story: { kind: /^\/stories\/highlights\//.test(path) ? "highlight" : "story" }
 			};
@@ -2629,7 +2630,9 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 					nodes: new Map(),
 					older: null,
 					detailAt: 0,
-					pages: 0
+					pages: 0,
+					gap: false,
+					ages: new Map()
 				};
 				this.threads.push(th);
 			}
@@ -2647,7 +2650,9 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			const viewer = isObj(t.viewer) ? idStr(t.viewer.interop_messaging_user_fbid) : null;
 			if (viewer) th.viewerFbid = viewer;
 			const conn = isObj(t.slide_messages) ? t.slide_messages : {};
-			this.addNodes(th, conn);
+			const incoming = edgeIds(conn);
+			if (th.nodes.size && incoming.length && !incoming.some((m) => th.nodes.has(m))) th.gap = true;
+			this.addNodes(th, conn, "newer");
 			const info = isObj(conn.page_info) ? conn.page_info : {};
 			if (!th.pages) th.older = olderOf(info);
 			th.detailAt = this.now();
@@ -2665,30 +2670,47 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			const th = known ?? this.thread(current);
 			if (!th) return false;
 			if (known) for (const i of ids) th.aliases.add(i);
-			this.addNodes(th, conn);
+			this.addNodes(th, conn, "older");
 			th.older = olderOf(isObj(conn.page_info) ? conn.page_info : {});
 			th.pages++;
 			return true;
 		}
-		addNodes(th, conn) {
+		addNodes(th, conn, side) {
+			const fresh = [];
 			for (const e of Array.isArray(conn.edges) ? conn.edges : []) {
 				const n = isObj(e) && isObj(e.node) ? e.node : null;
 				const id = n ? str$1(n.message_id) : null;
-				if (n && id) th.nodes.set(id, n);
+				if (!n || !id) continue;
+				if (!th.nodes.has(id) && !fresh.includes(id)) fresh.push(id);
+				th.nodes.set(id, n);
 			}
+			let low = 0;
+			let high = -1;
+			for (const a of th.ages.values()) {
+				if (a < low) low = a;
+				if (a > high) high = a;
+			}
+			fresh.forEach((id, k) => th.ages.set(id, side === "newer" ? low - fresh.length + k : high + 1 + k));
 		}
 	};
+	function edgeIds(conn) {
+		return (Array.isArray(conn.edges) ? conn.edges : []).flatMap((e) => {
+			const id = isObj(e) && isObj(e.node) ? str$1(e.node.message_id) : null;
+			return id ? [id] : [];
+		});
+	}
 	function messagesOf(th) {
 		const out = [];
 		let i = 0;
-		for (const n of th.nodes.values()) {
+		for (const [id, n] of th.nodes) {
 			const m = slideMessageOf(n, th.viewerFbid, th.her?.id ?? null);
 			if (m) out.push({
 				m,
+				age: th.ages.get(id) ?? 0,
 				i: i++
 			});
 		}
-		return out.sort((a, b) => Date.parse(a.m.at) - Date.parse(b.m.at) || a.i - b.i).map((x) => x.m);
+		return out.sort((a, b) => Date.parse(a.m.at) - Date.parse(b.m.at) || b.age - a.age || a.i - b.i).map((x) => x.m);
 	}
 	function threadFromPath(pathname) {
 		return /^\/direct\/t\/(\d{1,40})\/?/.exec(pathname)?.[1] ?? null;
@@ -2766,12 +2788,38 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			reached
 		};
 	}
-	var ReadCutShort = class extends Error {};
+	var ReadCutShort = class extends Error {
+		whole;
+		capped;
+		constructor(whole = false, capped = false) {
+			super("The read stopped before it reached RizzBot's copy");
+			this.whole = whole;
+			this.capped = capped;
+		}
+	};
+	function cutShortCard(e, max) {
+		if (e.capped) return {
+			text: `There are more than ${max.toLocaleString("en-US")} messages since what RizzBot has, and one sync reads no further back, so nothing was sent.`,
+			button: null
+		};
+		const why = "Instagram stopped loading older messages before it reached what RizzBot has, so nothing was sent.";
+		return e.whole ? {
+			text: `${why} Try again in a minute.`,
+			button: "try-again"
+		} : {
+			text: `${why} Resync all reads it from the start.`,
+			button: "resync-all"
+		};
+	}
 	function sendDecision(r) {
 		if (r.partial && !r.reached) return r.truncated ? { send: false } : {
 			send: true,
 			full: true
 		};
+		if (!r.partial && r.truncated && r.hasCopy) return r.reached ? {
+			send: true,
+			full: false
+		} : { send: false };
 		return {
 			send: true,
 			full: !r.partial
@@ -2942,9 +2990,9 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			app: "instagram",
 			onChange: () => refresh()
 		});
-		function draftsPill(key, who, extra) {
+		function draftsPill(key, who, extra, app = "instagram") {
 			drafts.refresh(key, who);
-			return dropdown.pill(key, who, createApi(host).origin, extra);
+			return dropdown.pill(key, who, createApi(host).origin, extra, app);
 		}
 		const storyRuns = new Map();
 		let profileSince = Date.now();
@@ -3113,7 +3161,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				}, {
 					label: "Update",
 					onClick: () => void run(username, g.name, null)
-				});
+				}, null);
 				if (pill) return pill;
 				return {
 					kind: "pill",
@@ -3558,7 +3606,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			held = true;
 			const th = dm.thread(urlId);
 			const here = threadFromPath(win.location.pathname) === urlId;
-			if (!fromLoad && (!here || !th || Date.now() - th.detailAt > FRESH_MS)) {
+			if (!fromLoad && (!here || !th || th.gap || Date.now() - th.detailAt > FRESH_MS)) {
 				host.set(SYNC_ON_LOAD, {
 					key: urlId,
 					full,
@@ -3621,6 +3669,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			const api = createApi(host);
 			const ctx = o.ctx ?? { handle: "" };
 			let partial = false;
+			let copy = null;
 			o.show("Reading your messages", .05);
 			let rounds = 0;
 			let scrolled = null;
@@ -3654,7 +3703,8 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 						try {
 							const r = await api.call("GET", `/api/girls/instagram-chat?${q}`, void 0, 2e4);
 							partial = !o.full && !!r.mark;
-							return o.full ? null : r.mark ?? null;
+							copy = r.mark ?? null;
+							return o.full ? null : copy;
 						} catch (e) {
 							if (e instanceof ApiError || e instanceof NotConnectedError) throw e;
 							throw new ApiError("RizzBot could not be reached. Try again in a minute.", 0, null);
@@ -3668,12 +3718,14 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			if (left) throw new InstagramError("failed", "You moved to another chat while this one was being read, so nothing was sent. Try again to go back to it and sync it.");
 			const { truncated, capped, reached, ...chat } = read;
 			ctx.handle = chat.her.username;
+			const had = copy;
 			const decision = sendDecision({
 				partial,
-				reached,
-				truncated
+				reached: o.full ? reachedMark(chat.messages, had) : reached,
+				truncated,
+				hasCopy: had !== null
 			});
-			if (!decision.send) throw new ReadCutShort();
+			if (!decision.send) throw new ReadCutShort(o.full, capped);
 			partial = !decision.full;
 			o.show("Sending your chat", .92, true);
 			const body = await api.call("POST", "/api/girls/instagram-chat", { chat: {
@@ -3778,17 +3830,23 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 					return;
 				}
 				if (e instanceof ReadCutShort) {
+					const cut = cutShortCard(e, MAX_MESSAGES);
 					panel.show({
 						kind: "card",
 						icon: "warn",
 						title: "Chat read in part",
-						text: ["Instagram stopped loading older messages before it reached what RizzBot has, so nothing was sent. Resync all reads it from the start."],
-						buttons: [{
+						text: [cut.text],
+						buttons: cut.button === "try-again" ? [{
+							label: "Try again",
+							primary: true,
+							icon: "retry",
+							onClick: () => syncFromPage(urlId, true)
+						}] : cut.button === "resync-all" ? [{
 							label: "Resync all",
 							primary: true,
 							icon: "sync",
 							onClick: () => syncFromPage(urlId, true)
-						}],
+						}] : [],
 						onClose: release
 					});
 					return;
