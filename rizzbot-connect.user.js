@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RizzBot Connect
 // @namespace    https://rizzbotproject.vercel.app
-// @version      1.19.0
+// @version      1.20.0
 // @author       rizzbotdev
 // @description  Bring girls into RizzBot from the sites you use in your browser. Instagram: add her from her profile, with your chat, and draft replies to the story or post you are looking at. Reads only what you can see; never likes, follows or opens a story for you. Tinder: a status badge on every match and chat, chats synced by themselves, and one-press import. Reads only what Tinder already loaded; never sends Tinder a request or presses its buttons.
 // @license      UNLICENSED
@@ -2441,8 +2441,8 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 	var HEART = /^❤️?$/;
 	var TEXT_MAX = 4e3;
 	var ID_MAX = 80;
-	var REACTIONS_MAX = 50;
-	var EMOJI_MAX = 32;
+	var REACTIONS_MAX$1 = 50;
+	var EMOJI_MAX$1 = 32;
 	var SyncStopped = class extends Error {
 		constructor() {
 			super("Stopped.");
@@ -2498,11 +2498,11 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 		const other = from === "him" ? "her" : "him";
 		const out = [];
 		for (const r of Array.isArray(node.reactions) ? node.reactions : []) {
-			if (out.length >= REACTIONS_MAX) break;
+			if (out.length >= REACTIONS_MAX$1) break;
 			if (!isObj(r)) continue;
 			const emoji = typeof r.reaction === "string" ? r.reaction.trim() : "";
 			const by = idStr(r.sender_fbid);
-			if (!emoji || emoji.length > EMOJI_MAX || by === null) continue;
+			if (!emoji || emoji.length > EMOJI_MAX$1 || by === null) continue;
 			out.push({
 				emoji,
 				from: by === sender ? from : other
@@ -4020,7 +4020,8 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 		down: ["M12 5v14", "m19 12-7 7-7-7"],
 		alert: ["M12 8v5", "M12 17h.01"],
 		chat: ["M7.9 20A9 9 0 1 0 4 16.1L2 22z"],
-		clock: ["M12 7v5l3 2"]
+		clock: ["M12 7v5l3 2"],
+		eye: ["M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z", "M10 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0"]
 	};
 	var SVG_NS = "http://www.w3.org/2000/svg";
 	var Marks = class {
@@ -4204,13 +4205,18 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			live.wrap.replaceChildren(...parts, chip);
 		}
 	};
+	var IMPORT_VERSION = "connect-2";
 	var HEX24 = /^[0-9a-f]{24}$/;
 	var HEX48 = /^[0-9a-f]{48}$/;
 	var MAX_UPDATES = 40;
+	var SAME_INSTANT_MS = 1e3;
 	var MAX_HISTORY = 2e3;
 	var MAX_BATCH = 400;
 	var MAX_TEXT = 1e4;
 	var cut = (t) => t !== null && t.length > MAX_TEXT ? t.slice(0, MAX_TEXT) : t;
+	var REACTIONS_MAX = 20;
+	var EMOJI_MAX = 32;
+	var BAD_EMOJI = /[\u0000-\u001f\u007f]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 	function kindOf(k) {
 		return k.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase().replace(/[^a-z_]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 24) || "other";
 	}
@@ -4237,7 +4243,8 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			kind: type === "gif" ? "gif" : text !== null ? "text" : kindOf(type ?? "other")
 		};
 	}
-	function fromChannel(m) {
+	function channelReactions(_m) {}
+	function fromChannel(m, readReactions = channelReactions) {
 		const o = obj(m);
 		if (!o) return null;
 		const mid = obj(o.message_id);
@@ -4255,12 +4262,19 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			text = str(obj(content.gif).url);
 		}
 		if (!id && text === null) return null;
+		let reactions;
+		try {
+			reactions = readReactions(o);
+		} catch {
+			reactions = void 0;
+		}
 		return {
 			id,
 			sender: str(o.sender_id),
 			at: str(o.created_at),
 			text,
-			kind
+			kind,
+			...reactions ? { reactions } : {}
 		};
 	}
 	function richness(u) {
@@ -4278,23 +4292,91 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 	function looksLikeUser(o) {
 		return !!o && !!idOf(o) && Array.isArray(o.photos) && !!(o.name || o.bio || o.birth_date);
 	}
-	var byTime = (a, b) => (Date.parse(a.at ?? "") || 0) - (Date.parse(b.at ?? "") || 0);
 	var msgKey = (m) => m.id ?? `${m.at}|${m.sender}|${m.text}`;
+	var msOf = (m) => {
+		const t = Date.parse(m.at ?? "");
+		return Number.isFinite(t) ? t : null;
+	};
+	function seated(list, newestFirst, first) {
+		const times = list.map(msOf).filter((t) => t !== null);
+		const other = times.findIndex((t) => t !== times[0]);
+		if (other > 0) newestFirst = times[other] < times[0];
+		const chrono = newestFirst ? [...list].reverse() : list;
+		let last = null;
+		let lead = [];
+		chrono.forEach((m, i) => {
+			m.pos = first + i;
+			const t = msOf(m);
+			if (t === null) {
+				if (last !== null) m.seat = {
+					t: last,
+					side: 1
+				};
+				else lead.push(m);
+				return;
+			}
+			for (const x of lead) x.seat = {
+				t,
+				side: -1
+			};
+			lead = [];
+			last = t;
+		});
+		return list;
+	}
+	var placeOf = (m) => {
+		const t = msOf(m);
+		if (t !== null) return [
+			t,
+			0,
+			m.pos ?? 0
+		];
+		return m.seat ? [
+			m.seat.t,
+			m.seat.side,
+			m.pos ?? 0
+		] : [
+			Infinity,
+			0,
+			m.pos ?? 0
+		];
+	};
+	function captureOrder(a, b) {
+		const x = placeOf(a);
+		const y = placeOf(b);
+		return (x[0] === y[0] ? 0 : x[0] - y[0]) || x[1] - y[1] || x[2] - y[2];
+	}
 	var TinderCapture = class {
 		selfId = null;
 		version = 0;
 		matches = new Map();
 		users = new Map();
 		fullProfile = new Set();
-		complete = {
-			messages: false,
-			new: false
-		};
+		readReactions;
 		chain = {
 			id: 0,
 			last: null,
 			start: null
 		};
+		places = {
+			up: 0,
+			down: 0
+		};
+		constructor(opts = {}) {
+			this.readReactions = opts.readReactions ?? channelReactions;
+		}
+		up(n) {
+			const first = this.places.up;
+			this.places.up += n;
+			return first;
+		}
+		down(n) {
+			this.places.down -= n;
+			return this.places.down;
+		}
+		inOrder(list, newestFirst, first) {
+			return [...seated(list, newestFirst, first)].sort(captureOrder);
+		}
 		rec(matchId) {
 			let r = this.matches.get(matchId);
 			if (!r) {
@@ -4370,11 +4452,11 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				r.listed = kind;
 				r.createdDate = str(o.created_date) ?? r.createdDate;
 				this.person(r, obj(o.person));
-				const msgs = arr(o.messages).map(fromLegacy).filter((x) => !!x).sort(byTime);
+				const raw = arr(o.messages).map(fromLegacy).filter((x) => !!x);
+				const msgs = this.inOrder(raw, false, this.up(raw.length));
 				if (msgs.length) r.listNewest = msgs[msgs.length - 1];
 				this.bump(r);
 			}
-			if (!str(d.next_page_token)) this.complete[kind] = true;
 		}
 		onUpdates(d, cutoff, answeredTo) {
 			const same = (a, b) => !!a && !!b && Date.parse(a) === Date.parse(b) && Number.isFinite(Date.parse(a));
@@ -4389,7 +4471,8 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				const o = obj(m);
 				const id = idOf(o);
 				if (!o || !id || !HEX48.test(id)) continue;
-				const msgs = arr(o.messages).map(fromLegacy).filter((x) => !!x).sort(byTime);
+				const raw = arr(o.messages).map(fromLegacy).filter((x) => !!x);
+				const msgs = this.inOrder(raw, false, this.up(raw.length));
 				const r = this.rec(id);
 				this.person(r, obj(o.person));
 				if (!msgs.length) continue;
@@ -4429,12 +4512,10 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			if (parts[0] && !r.personId && HEX24.test(str(parts[0].user_id) ?? "")) r.personId = str(parts[0].user_id);
 			if (parts[0] && !r.name) r.name = str(parts[0].name);
 			r.history ??= new Map();
-			for (const m of arr(d.messages)) {
-				const x = fromChannel(m);
-				if (!x) continue;
-				if (r.history.has(msgKey(x)) || r.history.size < MAX_HISTORY) r.history.set(msgKey(x), x);
-				else r.historyTruncated = true;
-			}
+			const raw = arr(d.messages).map((m) => fromChannel(m, this.readReactions)).filter((x) => !!x);
+			const page = seated(raw, true, this.down(raw.length));
+			for (const x of page) if (r.history.has(msgKey(x)) || r.history.size < MAX_HISTORY) r.history.set(msgKey(x), x);
+			else r.historyTruncated = true;
 			if (obj(d.pagination_info)?.has_next_page === false) r.historyComplete = true;
 			this.bump(r);
 		}
@@ -4442,6 +4523,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			if (!HEX48.test(matchId)) return;
 			const x = fromLegacy(d);
 			if (!x) return;
+			seated([x], false, this.up(1));
 			const r = this.rec(matchId);
 			this.pushBatch(r, {
 				cutoff: null,
@@ -4455,7 +4537,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			if (same) {
 				const all = new Map();
 				for (const m of [...same.messages, ...b.messages]) all.set(msgKey(m), m);
-				same.messages = [...all.values()].sort(byTime);
+				same.messages = [...all.values()].sort(captureOrder);
 				if (same.messages.length > MAX_BATCH) {
 					same.messages = same.messages.slice(-400);
 					same.cutoff = null;
@@ -4476,9 +4558,6 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				}
 				r.updates.shift();
 			}
-		}
-		listsComplete() {
-			return this.complete.messages && this.complete.new;
 		}
 		matchIds() {
 			return [...this.matches.values()].filter((r) => !r.group).map((r) => r.matchId);
@@ -4505,17 +4584,36 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			if (this.selfId) return sender === this.selfId ? "him" : "her";
 			return null;
 		}
+		reactionsOf(r, list) {
+			if (!Array.isArray(list)) return void 0;
+			const out = [];
+			const seen = new Set();
+			for (const x of list) {
+				if (out.length >= REACTIONS_MAX) break;
+				const emoji = typeof x?.emoji === "string" ? x.emoji.trim() : "";
+				const from = this.side(r, typeof x?.by === "string" ? x.by : null);
+				if (!emoji || emoji.length > EMOJI_MAX || BAD_EMOJI.test(emoji) || !from || seen.has(`${from}|${emoji}`)) continue;
+				seen.add(`${from}|${emoji}`);
+				out.push({
+					emoji,
+					from
+				});
+			}
+			return out.length ? out : void 0;
+		}
 		wire(r, m) {
 			if (!m) return null;
 			if (!m.sender && (r.personId || this.selfId)) return null;
 			const from = this.side(r, m.sender);
 			if (!from) return void 0;
+			const reactions = this.reactionsOf(r, m.reactions);
 			return {
 				id: m.id,
 				from,
 				at: m.at,
 				text: m.text,
-				kind: m.kind
+				kind: m.kind,
+				...reactions ? { reactions } : {}
 			};
 		}
 		evidence(matchId) {
@@ -4534,7 +4632,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			}
 			let history = null;
 			if (r.history) {
-				const messages = [...r.history.values()].filter((m) => m.sender || !(r.personId || this.selfId)).sort(byTime).map((m) => this.wire(r, m));
+				const messages = [...r.history.values()].filter((m) => m.sender || !(r.personId || this.selfId)).sort(captureOrder).map((m) => this.wire(r, m));
 				if (messages.some((m) => !m)) return null;
 				history = {
 					messages,
@@ -4550,6 +4648,35 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				history
 			};
 		}
+		continuous(r) {
+			if (!r.history) return false;
+			const proven = new Set();
+			let end = -Infinity;
+			const take = (m) => {
+				proven.add(msgKey(m));
+				const t = msOf(m);
+				if (t !== null && t > end) end = t;
+			};
+			for (const m of r.history.values()) take(m);
+			const start = end;
+			const used = new Set();
+			for (let grew = true; grew;) {
+				grew = false;
+				for (const u of r.updates) {
+					if (used.has(u) || !u.messages.length) continue;
+					const cut = Date.parse(u.cutoff ?? "");
+					if (!(Number.isFinite(cut) && (cut <= end || cut <= start + SAME_INSTANT_MS) || u.messages.some((m) => proven.has(msgKey(m))))) continue;
+					used.add(u);
+					grew = true;
+					u.messages.forEach(take);
+				}
+			}
+			return [...r.listNewest ? [r.listNewest] : [], ...r.updates.flatMap((u) => u.messages)].every((m) => {
+				if (proven.has(msgKey(m))) return true;
+				const t = msOf(m);
+				return t !== null && t <= end;
+			});
+		}
 		importPayload(matchId, panel, now = new Date()) {
 			const r = this.matches.get(matchId);
 			if (!r || r.group || !r.personId) return null;
@@ -4564,17 +4691,21 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			add(r.listNewest);
 			for (const u of r.updates) u.messages.forEach(add);
 			for (const m of r.history?.values() ?? []) add(m);
-			const messages = [...all.values()].sort(byTime).map((m) => ({
-				...m.id ? { _id: m.id } : {},
-				match_id: r.matchId,
-				from: m.sender,
-				...m.at ? { sent_date: m.at } : {},
-				message: m.text ?? `[${m.kind}]`,
-				...m.kind !== "text" ? { type: m.kind } : {}
-			}));
+			const messages = [...all.values()].sort(captureOrder).map((m) => {
+				const reactions = this.reactionsOf(r, m.reactions);
+				return {
+					...m.id ? { _id: m.id } : {},
+					match_id: r.matchId,
+					from: m.sender,
+					...m.at ? { sent_date: m.at } : {},
+					message: m.text ?? `[${m.kind}]`,
+					...m.kind !== "text" ? { type: m.kind } : {},
+					...reactions ? { reactions } : {}
+				};
+			});
 			return {
 				__rizzbot_tinder__: 1,
-				version: "connect-1",
+				version: IMPORT_VERSION,
 				source: "rizzbot-connect",
 				capturedAt: now.toISOString(),
 				matchId: r.matchId,
@@ -4582,6 +4713,12 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				match,
 				user: user ?? obj(match.person),
 				messages,
+				history: {
+					opened: r.history !== null,
+					complete: r.historyComplete,
+					truncated: r.historyTruncated,
+					continuous: this.continuous(r)
+				},
 				panel
 			};
 		}
@@ -4594,6 +4731,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 		"not-imported",
 		"synced",
 		"outdated",
+		"review",
 		"mismatch",
 		"moved-off",
 		"busy"
@@ -4666,6 +4804,15 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				},
 				action: null
 			};
+			case "review": return {
+				spec: {
+					label: "Review",
+					tone: "blue",
+					icon: "eye",
+					title: `${b.why ?? "Her Tinder chat is waiting for your review in RizzBot."}${b.slug ? " Press to review it." : ""}`
+				},
+				action: b.slug ? "review" : null
+			};
 			case "mismatch": return {
 				spec: {
 					label: "Mismatch",
@@ -4730,10 +4877,13 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 	function importGate(s) {
 		return s.openMatch === s.matchId ? "go" : "open-her-first";
 	}
+	function needsRecheck(b) {
+		return b?.kind === "busy";
+	}
 	function toSend(s) {
 		return s.ids.filter((id) => {
 			if (s.version(id) !== s.sent.get(id)) return true;
-			return s.busyRetry && s.badges.get(id)?.kind === "busy";
+			return s.recheck && needsRecheck(s.badges.get(id));
 		});
 	}
 	function importEnd(status, body, message) {
@@ -5049,7 +5199,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 		firstSyncMs: 2500,
 		minGapMs: 5e3,
 		retryMs: 3e4,
-		busyRetryMs: 3e4,
+		recheckMs: 3e4,
 		importRecheckMs: 2e4,
 		graceMs: 6e3,
 		uploadMs: 500,
@@ -5076,7 +5226,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 		let syncing = false;
 		let syncTimer = null;
 		let lastSync = 0;
-		let busyRetry = false;
+		let recheck = false;
 		installHooks(win, (path, query, json, body) => {
 			const before = capture.version;
 			capture.ingest(path, query, json, body);
@@ -5118,9 +5268,9 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				version: (id) => capture.matchVersion(id),
 				sent,
 				badges,
-				busyRetry
+				recheck
 			});
-			busyRetry = false;
+			recheck = false;
 			for (const id of importing.keys()) if (!ids.includes(id)) ids.push(id);
 			const batch = ids.flatMap((id) => {
 				const ev = capture.evidence(id);
@@ -5144,7 +5294,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 				for (const chunk of queue) try {
 					const r = await api.call("POST", "/api/girls/tinder-sync", {
 						matches: chunk.map((b) => b.ev),
-						lists_complete: capture.listsComplete()
+						version: 2
 					}, 6e4);
 					for (const b of chunk) {
 						sent.set(b.id, b.version);
@@ -5179,9 +5329,9 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 			}
 			if (failed) return scheduleSync(timing.retryMs);
 			if (capture.matchIds().some((id) => capture.matchVersion(id) !== sent.get(id) && capture.evidence(id))) return scheduleSync();
-			if (importing.size || [...badges.values()].some((b) => b.kind === "busy")) {
-				busyRetry = true;
-				scheduleSync(importing.size ? timing.importRecheckMs : timing.busyRetryMs);
+			if (importing.size || [...badges.values()].some(needsRecheck)) {
+				recheck = true;
+				scheduleSync(importing.size ? timing.importRecheckMs : timing.recheckMs);
 			}
 		}
 		function chunks(batch) {
@@ -5466,7 +5616,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 					},
 					onClose: release
 				});
-				busyRetry = true;
+				recheck = true;
 				scheduleSync(timing.importRecheckMs);
 			} else {
 				importing.delete(matchId);
@@ -5474,7 +5624,7 @@ button.chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 					kind: "card",
 					icon: "warn",
 					title: "Already in your chats",
-					text: [`${end.name} is in RizzBot already. Bring in her newest messages, or import her whole profile again.`],
+					text: [`${end.name} is in RizzBot already. Bring in her newest messages, or import her whole profile again.`, "Sync chat only adds what's new. If RizzBot isn't sure where a message goes, the copy waits for your review on her page."],
 					keep: true,
 					buttons: [
 						{
