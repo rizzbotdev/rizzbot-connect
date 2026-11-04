@@ -20,7 +20,7 @@ What it does on Instagram: it reads what Instagram's page loads when you open he
 
 ## Tinder
 
-- **Every chat and match** gets a badge: **Synced**, **Outdated** (open her chat to sync it), **Mismatch** (review it in RizzBot), **Import**, or the app her chat moved to.
+- **Every chat and match** gets a badge: **Synced**, **Outdated** (open her chat to sync it), **Review** (her chat waits for your review in RizzBot), **Import**, or **Busy**.
 - **Opening a chat** syncs it by itself when RizzBot can prove which messages are new. Nothing is drafted and nothing is spent.
 - **Import:** open her chat, then press **Import** on the badge.
 
