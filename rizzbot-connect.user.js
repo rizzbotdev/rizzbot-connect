@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RizzBot Connect
 // @namespace    https://rizzbotproject.vercel.app
-// @version      1.20.0
+// @version      1.21.0
 // @author       rizzbotdev
 // @description  Bring girls into RizzBot from the sites you use in your browser. Instagram: add her from her profile, with your chat, and draft replies to the story or post you are looking at. Reads only what you can see; never likes, follows or opens a story for you. Tinder: a status badge on every match and chat, chats synced by themselves, and one-press import. Reads only what Tinder already loaded; never sends Tinder a request or presses its buttons.
 // @license      UNLICENSED
@@ -601,10 +601,56 @@ input:focus { border-color: var(--rose); box-shadow: 0 0 0 4px rgb(244 63 94 / .
 .row .r { margin-left: auto; color: #8a8a93; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .portrait { position: relative; width: 96px; height: 96px; margin: 0 auto 14px; }
 .portrait .face { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; display: grid; place-items: center; background: #1c1c21; color: #c7c7cf; font-size: 34px; font-weight: 700; box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px #2a2a31; }
-.portrait .corner { position: absolute; right: -6px; bottom: -2px; width: 38px; height: 38px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 3px var(--surface); background: #1c1c21; }
-.meta { display: flex; justify-content: center; align-items: center; gap: 7px; flex-wrap: wrap; margin-top: 6px; color: #8a8a93; font-size: 12.5px; font-weight: 500; }
-.meta i { width: 3px; height: 3px; border-radius: 50%; background: #55555d; }
-.meta + p { font-size: 12.5px; color: #7d7d86; margin-top: 2px; }
+/* a question about who she is (a pair, a list): a faint rose wash at the top */
+.mod.who { border-radius: 22px; background: radial-gradient(70% 150px at 50% 0%, rgb(236 72 153 / .16), transparent 70%) no-repeat, var(--surface); }
+.back { position: absolute; top: 12px; left: 12px; height: 30px; padding: 0 10px 0 6px; border-radius: 10px; border: 0; background: none; color: var(--faint); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; transition: background .15s, color .15s; }
+.back:hover { background: #1a1a1f; color: #fff; }
+.back:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.back svg { width: 15px; height: 15px; }
+.back ~ h3 { margin-top: 18px; }
+/* two faces, joined: hers on the site at the left, the girl in RizzBot at the right */
+.pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; gap: 6px; margin: 0 0 18px; }
+.pair .p { display: grid; justify-items: center; gap: 8px; min-width: 0; }
+.pair .face { width: 76px; height: 76px; border-radius: 50%; object-fit: cover; display: grid; place-items: center; background: #1c1c21; color: #c7c7cf; font-size: 28px; font-weight: 700; }
+.pair .p:first-child .face { box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px #d946ef; }
+.pair .p:last-child .face { box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--rose); }
+.pair .nm { max-width: 100%; }
+.pair b { display: block; font-size: 14px; font-weight: 650; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pair small { display: block; font-size: 12px; color: #8a8a93; }
+.pair .join { height: 76px; display: grid; place-items: center; }
+.pair .join i { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: #1c1c22; color: #f9a8d4; box-shadow: 0 0 0 1px #2a2a31; }
+.pair .join svg { width: 15px; height: 15px; }
+.under { display: flex; justify-content: center; margin-top: 10px; }
+.hchip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px 0 8px; border-radius: 999px; background: #17171c; color: #d4d4da; font-size: 12.5px; font-weight: 600; max-width: 100%; }
+.hchip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hchip svg { width: 14px; height: 14px; color: #e879f9; flex: none; }
+.tag { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 8px; border-radius: 999px; font-size: 12px; font-weight: 650; background: rgb(34 197 94 / .13); color: #4ade80; white-space: nowrap; }
+.tag svg { width: 12px; height: 12px; }
+.facts { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 1px; border-radius: 14px; overflow: hidden; background: #23232a; text-align: center; }
+.facts div { background: #131317; padding: 10px 8px; min-width: 0; }
+.facts b { display: block; font-size: 15px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.facts small { display: block; font-size: 12px; color: #8a8a93; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the list to pick from */
+.find { position: relative; }
+.find svg { position: absolute; left: 13px; top: 13px; width: 16px; height: 16px; color: #8a8a93; pointer-events: none; }
+.find input { height: 42px; font-size: 14.5px; padding-left: 38px; }
+.picks { display: grid; gap: 2px; max-height: 276px; overflow: auto; scrollbar-width: thin; }
+.grp { margin: 8px 4px 4px; font-size: 11.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: #8a8a93; }
+.grp:first-child { margin-top: 0; }
+.pick { display: flex; align-items: center; gap: 11px; width: 100%; padding: 8px 9px; border: 0; border-radius: 12px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; min-width: 0; transition: background .15s; }
+.pick:hover { background: #17171c; }
+.pick:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+.pick[aria-pressed="true"] { background: rgb(244 63 94 / .12); box-shadow: inset 0 0 0 1px rgb(244 63 94 / .5); }
+.pick .face { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; display: grid; place-items: center; background: #1c1c21; color: #c7c7cf; font-size: 15px; font-weight: 700; flex: none; }
+.pick .t { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.pick .n { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.pick .n b { font-size: 14.5px; line-height: 1.3; font-weight: 650; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick small { font-size: 12.5px; line-height: 1.3; color: #8a8a93; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 700; flex: none; background: rgb(255 255 255 / .09); color: #e4e4e7; }
+.pick .end { display: grid; justify-items: end; gap: 3px; flex: none; }
+.pick .when { font-size: 12px; color: #8a8a93; white-space: nowrap; }
+.pick .hit { font-size: 11px; font-weight: 650; color: #4ade80; white-space: nowrap; }
+.nobody { padding: 22px 10px; text-align: center; color: #8a8a93; font-size: 13.5px; }
 a.tlink { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; color: #f9a8d4; font-size: 13px; font-weight: 600; text-decoration: none; }
 a.tlink:hover { color: #fbcfe8; text-decoration: underline; text-underline-offset: 3px; }
 a.tlink svg { width: 13px; height: 13px; }
@@ -620,6 +666,8 @@ a.tlink svg { width: 13px; height: 13px; }
 .btn.rose { background: linear-gradient(100deg, var(--rose), var(--pink)); }
 .btn.blue { background: linear-gradient(100deg, #3b82f6, #6366f1); }
 .btn.rose:hover, .btn.blue:hover { filter: brightness(1.07); }
+.btn.muted { height: 40px; background: #15151a; color: #b4b4bd; font-size: 14px; font-weight: 600; }
+.btn.muted:hover { background: #1c1c22; color: #fff; }
 .btn.quiet { height: 34px; background: none; color: #8a8a93; font-size: 13.5px; }
 .btn.quiet:hover { color: #fff; background: none; }
 .btn:disabled, .btn:disabled:hover { cursor: default; opacity: .6; color: #8a8a93; transform: none; }
@@ -714,7 +762,10 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 		plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
 		down: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`,
 		send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.54 21.69a.5.5 0 0 0 .94-.03l6.5-19a.5.5 0 0 0-.64-.64l-19 6.5a.5.5 0 0 0-.02.94l7.93 3.18a2 2 0 0 1 1.11 1.11z"/><path d="m21.85 2.15-10.94 10.94"/></svg>`,
-		user: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>`
+		user: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>`,
+		back: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>`,
+		find: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>`,
+		instagram: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/></svg>`
 	};
 	async function copyText(doc, text) {
 		try {
@@ -1177,6 +1228,25 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				x.addEventListener("click", () => this.close());
 				mod.appendChild(x);
 			}
+			if (state.onBack && !state.dot) {
+				const back = el("button", "back", "Back");
+				back.type = "button";
+				back.insertAdjacentHTML("afterbegin", SVG.back);
+				back.addEventListener("click", () => {
+					if (this.state.kind === "card") this.state.onBack?.();
+				});
+				mod.appendChild(back);
+			}
+			if ((state.pair || state.picker) && !state.dot) mod.classList.add("who");
+			const face = (src, cls, initial) => {
+				if (src) {
+					const i = el("img", cls);
+					i.src = src;
+					i.alt = "";
+					return i;
+				}
+				return el("div", cls, initial ?? "");
+			};
 			const textLink = (l) => {
 				const a = el("a", "tlink", l.label);
 				a.insertAdjacentHTML("beforeend", SVG.open);
@@ -1205,21 +1275,30 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				if (row.childElementCount) ans.appendChild(row);
 				for (const t of more) ans.appendChild(el("div", "anote", sentence(t)));
 				mod.appendChild(ans);
+			} else if (state.pair) {
+				const pair = el("div", "pair");
+				const side = (f) => {
+					const p = el("div", "p");
+					p.appendChild(face(f.picture, "face", f.initial));
+					const nm = el("div", "nm");
+					nm.appendChild(el("b", void 0, f.name));
+					nm.appendChild(el("small", void 0, f.sub));
+					p.appendChild(nm);
+					return p;
+				};
+				pair.appendChild(side(state.pair.left));
+				const join = el("div", "join");
+				const knot = el("i");
+				knot.innerHTML = SVG.link;
+				join.appendChild(knot);
+				pair.appendChild(join);
+				pair.appendChild(side(state.pair.right));
+				mod.appendChild(pair);
 			} else if (state.portrait) {
 				const pr = el("div", "portrait");
-				const face = (src, cls, initial) => {
-					if (src) {
-						const i = el("img", cls);
-						i.src = src;
-						i.alt = "";
-						return i;
-					}
-					return el("div", cls, initial ?? "");
-				};
 				pr.appendChild(face(state.portrait.picture, "face", state.portrait.initial));
-				if (state.portrait.corner) pr.appendChild(face(state.portrait.corner, "corner"));
 				mod.appendChild(pr);
-			} else {
+			} else if (state.picker) {} else {
 				const icon = state.icon ?? "dot";
 				const mark = el("div", `mark${icon === "spin" ? " working" : ""}`);
 				mark.appendChild(logo());
@@ -1232,13 +1311,20 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			}
 			if (!state.dot) {
 				mod.appendChild(el("h3", void 0, state.title));
-				if (state.meta?.length) {
-					const m = el("div", "meta");
-					state.meta.forEach((t, k) => {
-						if (k) m.appendChild(el("i"));
-						m.appendChild(el("span", void 0, t));
-					});
-					mod.appendChild(m);
+				if (state.chip) {
+					const u = el("div", "under");
+					const c = el("span", "hchip");
+					c.innerHTML = SVG.instagram;
+					c.appendChild(el("span", void 0, state.chip));
+					u.appendChild(c);
+					mod.appendChild(u);
+				}
+				if (state.tag) {
+					const u = el("div", "under");
+					const t = el("span", "tag", state.tag);
+					t.insertAdjacentHTML("afterbegin", SVG.check);
+					u.appendChild(t);
+					mod.appendChild(u);
 				}
 				for (const t of state.text ?? []) mod.appendChild(el("p", void 0, sentence(t)));
 				if (state.textLink) mod.appendChild(textLink(state.textLink));
@@ -1307,12 +1393,140 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				c.appendChild(el("small", void 0, state.count.label));
 				content.appendChild(c);
 			}
+			if (state.facts?.length && !state.dot) {
+				const f = el("div", "facts");
+				for (const fact of state.facts) {
+					const cell = el("div");
+					cell.appendChild(el("b", void 0, fact.value));
+					cell.appendChild(el("small", void 0, fact.label));
+					f.appendChild(cell);
+				}
+				content.appendChild(f);
+			}
+			let pickButton = null;
+			let search = null;
+			if (state.picker && !state.dot) {
+				const pk = state.picker;
+				const now = () => this.state.kind === "card" ? this.state.picker : void 0;
+				const find = el("div", "find");
+				find.innerHTML = SVG.find;
+				search = el("input");
+				search.type = "search";
+				search.placeholder = pk.search;
+				search.setAttribute("aria-label", pk.search);
+				search.maxLength = 40;
+				search.spellcheck = false;
+				search.autocomplete = "off";
+				for (const t of [
+					"keydown",
+					"keyup",
+					"keypress"
+				]) search.addEventListener(t, (e) => e.stopPropagation());
+				find.appendChild(search);
+				content.appendChild(find);
+				const list = el("div", "picks");
+				content.appendChild(list);
+				const go = el("button", "btn rose", pk.idle);
+				go.type = "button";
+				go.disabled = true;
+				pickButton = go;
+				let picked = null;
+				const pictures = new Map();
+				const IO = this.doc.defaultView?.IntersectionObserver;
+				const loadInto = (key, slot) => {
+					const ask = now()?.picture;
+					if (!ask) return;
+					let p = pictures.get(key);
+					if (!p) {
+						p = ask(key).catch(() => null);
+						pictures.set(key, p);
+					}
+					p.then((src) => {
+						if (!src || !src.startsWith("data:image/") || !slot.isConnected) return;
+						const img = el("img", "face");
+						img.src = src;
+						img.alt = "";
+						slot.replaceWith(img);
+					});
+				};
+				let watch = null;
+				const label = () => {
+					const row = pk.rows.find((r) => r.key === picked);
+					go.replaceChildren();
+					go.textContent = row ? `${pk.action} ${row.name}` : pk.idle;
+					go.insertAdjacentHTML("afterbegin", SVG.link);
+					go.disabled = !row;
+				};
+				const draw = () => {
+					watch?.disconnect();
+					watch = IO ? new IO((entries) => {
+						for (const e of entries) {
+							if (!e.isIntersecting) continue;
+							watch?.unobserve(e.target);
+							loadInto(e.target.dataset.pic ?? "", e.target);
+						}
+					}, {
+						root: list,
+						rootMargin: "80px"
+					}) : null;
+					const q = search.value.trim().toLowerCase();
+					const shown = pk.rows.filter((r) => !q || r.name.toLowerCase().includes(q));
+					list.replaceChildren();
+					if (!shown.length) list.appendChild(el("div", "nobody", pk.empty));
+					const likely = shown.filter((r) => r.hit);
+					const groups = likely.length ? [[pk.headings[0], likely], [pk.headings[1], shown.filter((r) => !r.hit)]] : [[null, shown]];
+					let unseen = 0;
+					for (const [heading, rows] of groups) {
+						if (heading && rows.length) list.appendChild(el("div", "grp", heading));
+						for (const r of rows) {
+							const b = el("button", "pick");
+							b.type = "button";
+							b.setAttribute("aria-pressed", String(r.key === picked));
+							const f = face(r.picture, "face", (r.name.trim()[0] ?? "?").toUpperCase());
+							b.appendChild(f);
+							if (!r.picture && pk.picture) {
+								f.dataset.pic = r.key;
+								if (watch) watch.observe(f);
+								else if (unseen++ < 12) loadInto(r.key, f);
+							}
+							const t = el("div", "t");
+							const n = el("div", "n");
+							n.appendChild(el("b", void 0, r.name));
+							if (r.badge) n.appendChild(el("span", "app", r.badge));
+							t.appendChild(n);
+							if (r.sub) t.appendChild(el("small", void 0, r.sub));
+							b.appendChild(t);
+							const end = el("div", "end");
+							if (r.hit) end.appendChild(el("span", "hit", r.hit));
+							if (r.when) end.appendChild(el("span", "when", r.when));
+							b.appendChild(end);
+							b.addEventListener("click", () => {
+								picked = r.key;
+								for (const o of Array.from(list.querySelectorAll(".pick"))) o.setAttribute("aria-pressed", String(o === b));
+								label();
+							});
+							list.appendChild(b);
+						}
+					}
+				};
+				search.addEventListener("input", () => {
+					picked = null;
+					label();
+					draw();
+				});
+				go.addEventListener("click", () => {
+					if (picked) now()?.onPick(picked);
+				});
+				label();
+				draw();
+			}
 			const buttons = state.buttons ?? [];
-			if (buttons.length || state.link) {
+			if (buttons.length || state.link || pickButton) {
 				const row = el("div", "btns");
+				if (pickButton) row.appendChild(pickButton);
 				let link = null;
 				if (state.link) {
-					link = el("a", `btn ${state.link.ghost ? "" : "rose"}`, state.link.label);
+					link = el("a", `btn ${state.link.muted ? "muted" : "rose"}`, state.link.label);
 					glyph(link, state.link.icon);
 					link.href = state.link.href;
 					link.target = "_blank";
@@ -1345,6 +1559,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				field.focus();
 				field.select();
 			}
+			if (search) search.focus();
 		}
 	};
 	function draftsPath(who) {
@@ -3472,49 +3687,127 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 						...choice ?? {}
 					}, 12e4);
 				} catch (e) {
-					const candidates = e instanceof ApiError && e.status === 409 && Array.isArray(e.body?.candidates) ? e.body.candidates : null;
-					if (!candidates?.length) throw e;
+					const body = e instanceof ApiError && e.status === 409 ? e.body : null;
+					const girls = (Array.isArray(body?.girls) ? body.girls : []).filter((g) => g && typeof g.slug === "string" && typeof g.name === "string");
+					if (!body?.ask || !girls.length) throw e;
 					const keep = got;
-					const ask = (k) => {
-						const c = candidates[k];
-						const next = candidates[k + 1];
-						const meta = [c.platform ? appName(c.platform) : "", c.messages !== void 0 ? c.messages ? plural$1(c.messages, "message") : "no messages" : ""].filter(Boolean);
+					const likely = (Array.isArray(body.candidates) ? body.candidates : []).filter((c) => c && typeof c.slug === "string" && typeof c.name === "string");
+					const her = keep.payload.user;
+					const initialOf = (s) => (s.trim()[0] ?? "?").toUpperCase();
+					const pictureOk = (p) => typeof p === "string" && p.startsWith("data:image/");
+					const linkTo = (slug) => void run(username, name, { attach_to: slug }, keep);
+					const asNew = () => void run(username, name, { new: true }, keep);
+					const pictures = new Map();
+					for (const c of likely) if (pictureOk(c.picture)) pictures.set(c.slug, c.picture);
+					const question = () => {
+						const c = likely[0];
+						if (c) {
+							const facts = [{
+								value: String(c.messages ?? 0),
+								label: `${c.messages === 1 ? "message" : "messages"}${c.platform ? ` on ${appName(c.platform)}` : ""}`
+							}];
+							if (typeof c.active === "number") facts.push({
+								value: ago(c.active),
+								label: "last change"
+							});
+							panel.show({
+								kind: "card",
+								title: `Is this ${c.name}?`,
+								pair: {
+									left: {
+										picture: her.profilePic,
+										initial: initialOf(her.username),
+										name: her.username,
+										sub: "Instagram"
+									},
+									right: {
+										picture: pictures.get(c.slug) ?? null,
+										initial: initialOf(c.name),
+										name: c.name,
+										sub: "in RizzBot"
+									}
+								},
+								...c.reason ? { tag: c.reason.charAt(0).toUpperCase() + c.reason.slice(1) } : {},
+								facts,
+								buttons: [
+									{
+										label: `Yes, link to ${c.name}`,
+										primary: true,
+										icon: "link",
+										onClick: () => linkTo(c.slug)
+									},
+									{
+										label: "Someone else",
+										onClick: list
+									},
+									{
+										label: "No, add her as new",
+										quiet: true,
+										onClick: asNew
+									}
+								],
+								onClose: release
+							});
+							return;
+						}
 						panel.show({
 							kind: "card",
-							title: `Is this ${c.name}?`,
+							title: "Is she in RizzBot already?",
 							portrait: {
-								picture: typeof c.picture === "string" && c.picture.startsWith("data:image/") ? c.picture : null,
-								initial: (c.name.trim()[0] ?? "?").toUpperCase(),
-								corner: keep.payload.user.profilePic
+								picture: her.profilePic,
+								initial: initialOf(her.username)
 							},
-							meta,
-							text: [c.reason === "same photo" ? `Her Instagram photo matches one of ${c.name}'s photos.` : `Same name as @${username}.`],
-							textLink: {
-								label: `Open ${c.name} in RizzBot`,
-								href: `${api.origin}/chats/${encodeURIComponent(c.slug)}`
-							},
-							buttons: [
-								{
-									label: `Yes, add to ${c.name}`,
-									primary: true,
-									icon: "user",
-									onClick: () => void run(username, name, { attach_to: c.slug }, keep)
-								},
-								{
-									label: "No, new girl",
-									icon: "plus",
-									onClick: () => void run(username, name, { new: true }, keep)
-								},
-								...next ? [{
-									label: `Or is it ${next.name}?`,
-									quiet: true,
-									onClick: () => ask(k + 1)
-								}] : []
-							],
+							chip: her.username,
+							text: ["Nobody here looks like her by name or photo."],
+							buttons: [{
+								label: "Yes, pick her from my girls",
+								primary: true,
+								icon: "link",
+								onClick: list
+							}, {
+								label: "No, add her as new",
+								icon: "plus",
+								onClick: asNew
+							}],
 							onClose: release
 						});
 					};
-					ask(0);
+					const list = () => panel.show({
+						kind: "card",
+						title: "Which girl is she?",
+						chip: her.username,
+						onBack: question,
+						picker: {
+							rows: girls.map((g) => ({
+								key: g.slug,
+								name: g.name,
+								...g.platform ? { badge: appName(g.platform) } : {},
+								sub: g.messages ? plural$1(g.messages, "message") : "No messages yet",
+								...g.reason ? { hit: g.reason.charAt(0).toUpperCase() + g.reason.slice(1) } : {},
+								...typeof g.active === "number" ? { when: ago(g.active) } : {},
+								picture: pictures.get(g.slug) ?? null
+							})),
+							search: "Search your girls",
+							empty: "No girl by that name.",
+							headings: ["Likely her", "Everyone else"],
+							idle: "Pick a girl to link",
+							action: "Link to",
+							onPick: linkTo,
+							picture: async (slug) => {
+								const r = await api.call("GET", `/api/connect/girl-thumb?slug=${encodeURIComponent(slug)}`, void 0, 2e4);
+								if (!pictureOk(r.picture)) return null;
+								pictures.set(slug, r.picture);
+								return r.picture;
+							}
+						},
+						buttons: [{
+							label: "She is not here, add her as new",
+							quiet: true,
+							onClick: asNew
+						}],
+						onClose: release
+					});
+					question();
 					return;
 				}
 			} catch (e) {
@@ -3566,7 +3859,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 					icon: "ok",
 					title: "Upload complete",
 					text: [
-						`RizzBot is ${res.created ? "importing" : "updating"} ${res.name || name || "her"} now.`,
+						choice?.attach_to && !res.created ? `Linked to ${res.name || name || "her"}. RizzBot is updating her now.` : `RizzBot is ${res.created ? "importing" : "updating"} ${res.name || name || "her"} now.`,
 						...got?.note ? [got.note] : [],
 						...chat.why ? [chat.why] : []
 					],
@@ -3595,7 +3888,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 					link: {
 						label: "Open in RizzBot",
 						icon: "open",
-						first: true,
+						muted: !!chat.open,
 						href: `${api.origin}/chats/${encodeURIComponent(res.slug)}`
 					},
 					onClose: release
