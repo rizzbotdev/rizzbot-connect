@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RizzBot Connect
 // @namespace    https://rizzbotproject.vercel.app
-// @version      1.22.0
+// @version      1.23.0
 // @author       rizzbotdev
 // @description  Bring girls into RizzBot from the sites you use in your browser. Instagram: add her from her profile, with your chat, and draft replies to the story or post you are looking at. Reads only what you can see; never likes, follows or opens a story for you. Tinder: a status badge on every match and chat, chats synced by themselves, and one-press import. Reads only what Tinder already loaded; never sends Tinder a request or presses its buttons.
 // @license      UNLICENSED
@@ -546,6 +546,8 @@
 .pill.done { padding-right: 0; overflow: hidden; }
 .tail { align-self: stretch; display: grid; place-items: center; width: 34px; margin-left: 4px; background: linear-gradient(100deg, #34d399, #4ade80); color: #052e16; flex: none; }
 .tail svg { width: 14px; height: 14px; display: block; }
+.pill.mute, .chip.mute { background: #26262c; color: #b4b4bd; }
+.pill.mute .disc img, .chip.mute .disc img { opacity: .6; }
 /* no entrance animation: the badge is redrawn on every state refresh (several at
    startup, and after each site re-render), so any animation here replays */
 
@@ -703,6 +705,9 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 .chip .main { gap: 8px; padding: 0 12px 0 5px; white-space: nowrap; }
 .chip .arrow { width: 34px; justify-content: center; border-left: 1px solid rgb(255 255 255 / .22); }
 .chip .arrow svg { width: 16px; height: 16px; transition: transform .18s; }
+.chip .tail { margin-left: 0; width: 30px; }
+.chip .arrow { position: relative; }
+.chip .arrow.alert::after { content: ""; position: absolute; top: 7px; right: 7px; width: 7px; height: 7px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px var(--rose); }
 .chip.open { border-radius: 18px 18px 6px 18px; }
 .chip.open .arrow svg { transform: rotate(180deg); }
 .num { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: rgb(0 0 0 / .28); display: inline-grid; place-items: center; font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -728,10 +733,15 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
   font-family: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 14px; font-weight: 500; line-height: 1.4;
   white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; -webkit-font-smoothing: auto; cursor: pointer; transition: filter .15s; }
 /* each bubble is its own Copy: brighter under the cursor, never lifted */
+.bub { position: relative; }
 .bub:hover { filter: brightness(1.12); }
 .bub:active { filter: brightness(1.3); }
 .bub:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-.bub svg { width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; }
+/* "copied", floating on the bubble's corner: it never moves the words */
+.cp { position: absolute; top: -9px; right: 8px; display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 7px; border-radius: 999px; background: #10b981; color: #fff;
+  font: 500 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; white-space: nowrap; pointer-events: none; box-shadow: 0 1px 4px rgb(0 0 0 / .35); animation: cpin .2s ease-out; }
+.cp svg { width: 10px; height: 10px; }
+@keyframes cpin { from { opacity: 0; transform: translateY(4px); } }
 .why { font-size: 12px; color: #fca5a5; }
 .ghost { max-width: 100%; padding: 6px 12px; border: 1px dashed hsl(38 92% 60% / .65); border-radius: 16px 16px 6px 16px; color: hsl(38 92% 60%); font-size: 13px; line-height: 1.4; }
 .hwhy { font-size: 12px; line-height: 1.4; color: rgb(255 255 255 / .6); text-align: right; }
@@ -749,6 +759,10 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 .dfoot a, .dfoot button { color: var(--faint); font: inherit; font-size: 12.5px; text-decoration: none; background: none; border: 0; padding: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
 .dfoot a:hover, .dfoot button:hover { color: #fff; }
 .dfoot svg { width: 12px; height: 12px; }
+/* no lines: a small menu of the actions alone */
+.drop.menu { width: auto; }
+.drop.menu .dfoot { padding: 6px 8px; gap: 14px; font-size: 13px; }
+.drop.menu .dfoot a, .drop.menu .dfoot button { font-size: 13px; color: #c7c7cf; }
 `;
 	var SVG = {
 		check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
@@ -997,8 +1011,9 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				this.onKey = null;
 			}
 		}
-		renderChip(bw, label, count, d, el, logo) {
-			const chip = el("div", `chip${d.open ? " open" : ""}`);
+		renderChip(bw, state, d, el, logo) {
+			const { label, count } = state;
+			const chip = el("div", `chip${d.open ? " open" : ""}${state.muted ? " mute" : ""}`);
 			const toggle = (e) => {
 				e.stopPropagation();
 				this.currentPillDrop()?.onToggle();
@@ -1006,21 +1021,35 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			const main = el("button", "main");
 			main.type = "button";
 			main.dataset.k = "main";
-			main.setAttribute("aria-expanded", String(d.open));
 			const disc = el("span", "disc");
-			disc.appendChild(logo());
+			disc.appendChild(state.busy ? el("span", "spin") : logo());
 			main.appendChild(disc);
 			main.appendChild(el("span", void 0, label));
 			if (count !== void 0) main.appendChild(el("span", "num", String(count)));
-			main.addEventListener("click", toggle);
-			const arrow = el("button", "arrow");
+			if (state.title) main.title = state.title;
+			if (d.onMain) main.addEventListener("click", (e) => {
+				e.stopPropagation();
+				const now = this.currentPillDrop();
+				if (now?.onMain) now.onMain();
+				else now?.onToggle();
+			});
+			else {
+				main.setAttribute("aria-expanded", String(d.open));
+				main.addEventListener("click", toggle);
+			}
+			const arrow = el("button", `arrow${d.alert ? " alert" : ""}`);
 			arrow.type = "button";
 			arrow.dataset.k = "arrow";
 			arrow.innerHTML = SVG.down;
 			arrow.setAttribute("aria-expanded", String(d.open));
-			arrow.setAttribute("aria-label", d.open ? "Hide her drafts" : "Show her drafts");
+			arrow.setAttribute("aria-label", d.lines.length ? d.open ? "Hide her drafts" : "Show her drafts" : "More");
 			arrow.addEventListener("click", toggle);
 			chip.appendChild(main);
+			if (state.ok) {
+				const c = el("span", "tail");
+				c.innerHTML = SVG.ok;
+				chip.appendChild(c);
+			}
 			chip.appendChild(arrow);
 			bw.appendChild(chip);
 		}
@@ -1041,9 +1070,9 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			if (!this.dropHost.isConnected) this.doc.body?.appendChild(this.dropHost);
 			const refocus = focusedKey(wrap);
 			wrap.replaceChildren();
-			const box = el("div", entering ? "drop enter" : "drop");
+			const box = el("div", `drop${entering ? " enter" : ""}${d.lines.length ? "" : " menu"}`);
 			box.setAttribute("role", "region");
-			box.setAttribute("aria-label", "Her drafts");
+			box.setAttribute("aria-label", d.lines.length ? "Her drafts" : "RizzBot Connect");
 			const now = () => this.currentDrop();
 			const icon = (cls, svg, label, onClick, disabled = false, k = "") => {
 				const b = el("button", `ib${cls}`);
@@ -1083,14 +1112,18 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				}
 				const bubbles = el("div", "bubbles");
 				bubblesOf(line.text).forEach((b, j) => {
-					const copied = line.copied?.includes(j) ?? false;
 					const btn = el("button", "bub", b);
 					btn.type = "button";
 					btn.dataset.k = `b${i}.${j}`;
-					btn.title = copied ? "Copied" : "Copy";
-					btn.setAttribute("aria-label", `${copied ? "Copied" : "Copy"}: ${b}`);
-					if (copied) btn.insertAdjacentHTML("afterbegin", SVG.check);
-					btn.addEventListener("click", () => now()?.onCopy(i, j));
+					btn.title = "Copy";
+					btn.setAttribute("aria-label", `Copy: ${b}`);
+					btn.addEventListener("click", () => {
+						const d2 = now();
+						if (!d2) return;
+						Promise.resolve(d2.onCopy(i, j)).then((ok) => {
+							if (ok && btn.isConnected) this.flashCopied(btn);
+						}, () => {});
+					});
 					bubbles.appendChild(btn);
 				});
 				if (line.state === "failed" && line.why) bubbles.appendChild(el("div", "why", line.why));
@@ -1108,25 +1141,58 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			}
 			foot.appendChild(gs);
 			const acts = el("span", "acts2");
-			if (d.extra) {
-				const x = el("button", void 0, d.extra.label);
+			(d.actions ?? []).forEach((act, k) => {
+				const x = el("button", void 0, act.label);
 				x.type = "button";
-				x.dataset.k = "extra";
-				x.addEventListener("click", () => now()?.extra?.onClick());
+				x.dataset.k = `act${k}`;
+				x.addEventListener("click", () => now()?.actions?.[k]?.onClick());
 				acts.appendChild(x);
+			});
+			if (d.openHref) {
+				const a = el("a", void 0, "Open in RizzBot");
+				a.insertAdjacentHTML("afterbegin", SVG.open);
+				a.href = d.openHref;
+				a.target = "_blank";
+				a.rel = "noopener";
+				acts.appendChild(a);
 			}
-			const a = el("a", void 0, "Open in RizzBot");
-			a.insertAdjacentHTML("afterbegin", SVG.open);
-			a.href = d.openHref;
-			a.target = "_blank";
-			a.rel = "noopener";
-			acts.appendChild(a);
 			foot.appendChild(acts);
 			box.appendChild(foot);
 			wrap.appendChild(box);
 			this.placeDrop();
 			this.listenForOutside(true);
 			if (refocus) refocusIn(wrap, refocus) || refocusIn(wrap, refocus.replace(/^sent(\d+)$/, "b$1.0"));
+		}
+		flashCopied(btn) {
+			try {
+				btn.animate?.([
+					{
+						transform: "scale(1)",
+						filter: "brightness(1)"
+					},
+					{
+						transform: "scale(0.96)",
+						filter: "brightness(1.35)",
+						offset: .35
+					},
+					{
+						transform: "scale(1)",
+						filter: "brightness(1)"
+					}
+				], {
+					duration: 260,
+					easing: "ease-out"
+				});
+			} catch {}
+			btn.querySelector(".cp")?.remove();
+			const tag = this.doc.createElement("span");
+			tag.className = "cp";
+			tag.setAttribute("aria-live", "polite");
+			tag.innerHTML = SVG.check;
+			tag.appendChild(this.doc.createTextNode("copied"));
+			btn.appendChild(tag);
+			const win = this.doc.defaultView;
+			if (win) win.setTimeout(() => tag.remove(), 1200);
 		}
 		render(state) {
 			const steady = this.state.kind === "card" && state.kind === "card" && !this.dismissed;
@@ -1180,13 +1246,16 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 					!!state.disabled || !state.onClick,
 					state.title ?? "",
 					state.count ?? null,
+					!!state.muted,
 					d ? {
 						open: d.open,
 						lines: d.lines,
 						hold: d.hold ?? null,
 						note: d.note ?? null,
-						href: d.openHref,
-						extra: d.extra?.label ?? null
+						href: d.openHref ?? null,
+						actions: (d.actions ?? []).map((a) => a.label),
+						main: !!d.onMain,
+						alert: !!d.alert
 					} : null
 				]);
 				if (sig === this.badgeSig && bw.firstChild && !(d?.open && !this.dropHost?.isConnected)) {
@@ -1199,14 +1268,14 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				this.refocusChip = false;
 				bw.replaceChildren();
 				if (d) {
-					this.renderChip(bw, state.label, state.count, d, el, logo);
+					this.renderChip(bw, state, d, el, logo);
 					this.placeBadge();
 					this.renderDrop(d, el);
 					if (refocus) refocusIn(bw, refocus);
 					return;
 				}
 				this.renderDrop(null, el);
-				const b = el("button", state.ok ? "pill done" : "pill");
+				const b = el("button", `pill${state.ok ? " done" : ""}${state.muted ? " mute" : ""}`);
 				const disc = el("span", "disc");
 				disc.appendChild(state.busy ? el("span", "spin") : logo());
 				b.appendChild(disc);
@@ -1655,6 +1724,11 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 		return a.drafting ? `Drafting for ${a.girl.name}` : null;
 	}
 	var GRADE_POLL_MS = 4e3;
+	var draftTiming = {
+		pollMs: 3e3,
+		followMaxMs: 3e5,
+		graceMs: 2e4
+	};
 	var DraftsWatch = class {
 		api;
 		onChange;
@@ -1665,6 +1739,9 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 		gradeTimers = new Map();
 		gradeSince = new Map();
 		queued = new Map();
+		expecting = new Map();
+		draftSince = new Map();
+		tried = new Map();
 		constructor(api, onChange, minGapMs = 15e3, win = globalThis) {
 			this.api = api;
 			this.onChange = onChange;
@@ -1674,6 +1751,36 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 		get(key) {
 			return this.answers.get(key)?.answer;
 		}
+		expect(key, who) {
+			this.expecting.set(key, {
+				before: this.get(key)?.drafts?.id ?? null,
+				at: Date.now()
+			});
+			this.draftSince.delete(key);
+			this.refresh(key, who, true);
+		}
+		forget(key, who) {
+			this.answers.delete(key);
+			this.refresh(key, who, true);
+		}
+		expected(key) {
+			const e = this.expecting.get(key);
+			if (!e) return false;
+			const had = this.answers.get(key);
+			const a = had?.answer;
+			const landed = !!a?.drafts && a.drafts.id !== e.before;
+			const saidNo = !!had && had.at - e.at > draftTiming.graceMs && !a?.drafting;
+			if (landed || saidNo || Date.now() - e.at > draftTiming.followMaxMs) {
+				this.expecting.delete(key);
+				return false;
+			}
+			return true;
+		}
+		drafting(key) {
+			if (this.expected(key)) return true;
+			const a = this.answers.get(key)?.answer;
+			return !!a?.girl && !a.drafts && a.drafting;
+		}
 		refresh(key, who, force = false) {
 			const api = this.api();
 			if (!api.connected()) return;
@@ -1682,25 +1789,25 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				return;
 			}
 			const had = this.answers.get(key);
-			if (!force && had && Date.now() - had.at < this.minGapMs) return;
+			if (!force && Date.now() - (this.tried.get(key) ?? 0) < this.minGapMs) return;
+			this.tried.set(key, Date.now());
 			this.inFlight.add(key);
 			fetchDrafts(api, who).then((answer) => {
 				const before = had ? JSON.stringify(had.answer) : "";
+				const was = this.drafting(key);
 				this.answers.set(key, {
 					at: Date.now(),
 					answer,
 					who
 				});
-				if (JSON.stringify(answer) !== before) this.onChange();
-				this.followGrades(key, answer, who);
+				if (JSON.stringify(answer) !== before || this.drafting(key) !== was) this.onChange();
+				this.follow(key, answer, who);
 			}).catch(() => {
-				if (had) {
-					this.answers.set(key, {
-						...had,
-						at: Date.now()
-					});
-					this.followGrades(key, had.answer, who);
-				}
+				this.follow(key, had?.answer ?? {
+					girl: null,
+					drafts: null,
+					drafting: false
+				}, who);
 			}).finally(() => {
 				this.inFlight.delete(key);
 				const next = this.queued.get(key);
@@ -1710,23 +1817,28 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				}
 			});
 		}
-		followGrades(key, answer, who) {
+		follow(key, answer, who) {
 			const t = this.gradeTimers.get(key);
 			if (t !== void 0) {
 				this.win.clearTimeout(t);
 				this.gradeTimers.delete(key);
 			}
-			if (!answer.drafts?.grading) {
-				this.gradeSince.delete(key);
-				return;
-			}
-			const since = this.gradeSince.get(key) ?? Date.now();
-			this.gradeSince.set(key, since);
-			if (Date.now() - since > 18e4) return;
+			let wait = null;
+			if (answer.drafts?.grading) {
+				const since = this.gradeSince.get(key) ?? Date.now();
+				this.gradeSince.set(key, since);
+				if (Date.now() - since <= 18e4) wait = GRADE_POLL_MS;
+			} else this.gradeSince.delete(key);
+			if (this.drafting(key)) {
+				const since = this.draftSince.get(key) ?? Date.now();
+				this.draftSince.set(key, since);
+				if (Date.now() - since <= draftTiming.followMaxMs) wait = draftTiming.pollMs;
+			} else this.draftSince.delete(key);
+			if (wait === null) return;
 			this.gradeTimers.set(key, this.win.setTimeout(() => {
 				this.gradeTimers.delete(key);
 				this.refresh(key, who, true);
-			}, GRADE_POLL_MS));
+			}, wait));
 		}
 	};
 	var DraftsDrop = class {
@@ -1734,7 +1846,6 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 		open = null;
 		snapshot = null;
 		states = new Map();
-		copied = new Map();
 		constructor(o) {
 			this.o = o;
 		}
@@ -1764,13 +1875,11 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				onToggle: () => this.open === key ? this.close(true) : this.openFor(key, who, answer),
 				lines: d.lines.map((l) => {
 					const s = isOpen ? this.states.get(l.index) : void 0;
-					const copied = isOpen ? this.copied.get(l.index) : void 0;
 					return {
 						text: l.text,
 						grade: l.grade ?? (d.grading ? "pending" : null),
 						state: s?.kind ?? "idle",
-						...s?.kind === "failed" ? { why: s.why } : {},
-						...copied?.size ? { copied: [...copied] } : {}
+						...s?.kind === "failed" ? { why: s.why } : {}
 					};
 				}),
 				hold: d.hold ?? null,
@@ -1779,14 +1888,15 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 					busy: true
 				} : !d.graded ? { text: "not graded" } : null,
 				openHref: `${origin}/chats/${encodeURIComponent(answer.girl.slug)}`,
-				extra: extra ? {
+				actions: extra ? [{
 					label: extra.label,
 					onClick: () => {
 						this.close(false);
 						extra.onClick();
 					}
-				} : null,
-				onCopy: (i, j) => void this.copy(key, d.lines[i], j),
+				}] : [],
+				alert: !!extra?.alert,
+				onCopy: (i, j) => this.copy(key, d.lines[i], j),
 				onSent: (i) => void this.sent(key, who, d.lines[i], sentOn),
 				onClose: () => this.close(true)
 			};
@@ -1799,10 +1909,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			};
 		}
 		openFor(key, who, answer) {
-			if (this.open !== key) {
-				this.states.clear();
-				this.copied.clear();
-			}
+			if (this.open !== key) this.states.clear();
 			this.open = key;
 			this.whos.set(key, who);
 			this.snapshot = {
@@ -1819,7 +1926,6 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			this.open = null;
 			this.snapshot = null;
 			this.states.clear();
-			this.copied.clear();
 			if (redraw) this.o.onChange();
 		}
 		whos = new Map();
@@ -1827,16 +1933,10 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			return this.whos.get(key) ?? null;
 		}
 		async copy(key, line, bubble) {
-			if (this.open !== key) return;
+			if (this.open !== key) return false;
 			const text = bubblesOf(line.text)[bubble];
-			if (text === void 0) return;
-			if (await copyText(this.o.doc, text)) {
-				if (this.open !== key) return;
-				const done = this.copied.get(line.index) ?? new Set();
-				done.add(bubble);
-				this.copied.set(line.index, done);
-				this.o.onChange();
-			}
+			if (text === void 0) return false;
+			return copyText(this.o.doc, text);
 		}
 		async sent(key, who, line, app) {
 			this.whos.set(key, who);
@@ -3099,7 +3199,8 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				slug,
 				name,
 				added,
-				wrote: typeof body.wrote === "boolean" ? body.wrote : added > 0
+				wrote: typeof body.wrote === "boolean" ? body.wrote : added > 0,
+				drafting: typeof body.jobId === "string" && body.jobId !== ""
 			};
 		}
 		if (ok && body.status === "pending") return {
@@ -3129,6 +3230,38 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 	function newMessages(n) {
 		return n === 0 ? "no new messages" : `${n} new ${n === 1 ? "message" : "messages"}`;
 	}
+	function syncNote(a) {
+		if (a.added > 0) return {
+			label: `${a.added} new ${a.added === 1 ? "message" : "messages"} synced`,
+			ok: true,
+			muted: false
+		};
+		return a.wrote ? {
+			label: "Chat updated",
+			ok: true,
+			muted: false
+		} : {
+			label: "No new messages",
+			ok: false,
+			muted: true
+		};
+	}
+	function behindOf(capture, screen) {
+		if (capture && capture.n > 0) return {
+			kind: "new",
+			n: capture.more ? null : capture.n,
+			hers: capture.hers
+		};
+		if (screen === "changed") return {
+			kind: "new",
+			n: null,
+			hers: false
+		};
+		return capture ? { kind: "same" } : { kind: "unknown" };
+	}
+	function syncLabel(b) {
+		return b.kind === "new" && b.n ? `Sync ${b.n} new ${b.n === 1 ? "message" : "messages"}` : b.kind === "new" ? "Sync new messages" : "Sync chat";
+	}
 	function answerCard(a, origin, read) {
 		const page = (slug, review = false) => `${origin}/chats/${encodeURIComponent(slug)}${review ? "?review=1" : ""}`;
 		switch (a.kind) {
@@ -3141,7 +3274,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 					title: `Synced · ${newMessages(a.added)}`,
 					lines,
 					link: {
-						label: a.wrote ? "Undo in RizzBot" : "Open in RizzBot",
+						label: "Open in RizzBot",
 						href: page(a.slug)
 					},
 					resync: !!read && (read.partial || read.truncated) && !read.capped
@@ -3176,6 +3309,131 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			};
 		}
 	}
+	var ENDS = 10;
+	var ENDS_SEP = "␞";
+	var liveTiming = { settleMs: 1200 };
+	var WHEN = String.raw`(just now|now|today|yesterday|\d+\s*[a-z]+(\s+ago)?|[a-z]+day|\d{1,2}:\d{2}(\s*[ap]m)?)`;
+	var STATUS = new RegExp(String.raw`^((seen|sent|delivered|opened|read)(\s+${WHEN})?|sending|typing|active(\s+${WHEN})?)[.…]*$`, "i");
+	function paneReading(pane) {
+		const tail = [];
+		const head = [];
+		const piece = (n) => {
+			if (n.nodeType === 3) {
+				const t = (n.nodeValue ?? "").replace(/\s+/g, " ").trim();
+				return t && !STATUS.test(t) ? t.slice(0, 80) : null;
+			}
+			if (n.nodeType !== 1) return null;
+			const tag = n.tagName;
+			if (tag === "IMG") {
+				const src = n.getAttribute("src") ?? "";
+				return src ? `img:${src.replace(/[?#].*$/, "").slice(-48)}` : null;
+			}
+			return tag === "VIDEO" || tag === "AUDIO" ? tag.toLowerCase() : null;
+		};
+		const stack = [pane];
+		let seen = 0;
+		while (stack.length && tail.length < ENDS && seen++ < 2e4) {
+			const n = stack.pop();
+			const p = piece(n);
+			if (p) tail.push(p);
+			else if (n.nodeType === 1) for (const c of Array.from(n.childNodes)) stack.push(c);
+		}
+		const front = [pane];
+		seen = 0;
+		while (front.length && head.length < ENDS && seen++ < 2e4) {
+			const n = front.pop();
+			const p = piece(n);
+			if (p) head.push(p);
+			else if (n.nodeType === 1) for (const c of Array.from(n.childNodes).reverse()) front.push(c);
+		}
+		return tail.length || head.length ? `${head.join("␟")}${ENDS_SEP}${tail.join("␟")}` : "";
+	}
+	function movedDuring(start, end, olderLoaded) {
+		if (!start || !end || start === end) return false;
+		const [h1, t1] = start.split(ENDS_SEP);
+		const [h2, t2] = end.split(ENDS_SEP);
+		return Number(h1 !== h2) + Number(t1 !== t2) === 2 || !olderLoaded;
+	}
+	function atNewest(pane, reverse) {
+		if (reverse) return Math.abs(pane.scrollTop) < 60;
+		return pane.scrollTop + pane.clientHeight >= pane.scrollHeight - 60;
+	}
+	var LiveChat = class {
+		now;
+		thread = null;
+		load = "";
+		pages = -1;
+		base = null;
+		candidate = null;
+		differs = false;
+		carried = false;
+		left = new Map();
+		constructor(now = () => Date.now()) {
+			this.now = now;
+		}
+		tick(thread, load, pages, reading) {
+			const before = this.state(thread);
+			if (thread !== this.thread || load !== this.load) {
+				if (this.thread !== null && (this.carried || this.differs)) this.left.set(this.thread, this.load);
+				this.thread = thread;
+				this.load = load;
+				this.pages = pages;
+				this.start();
+				this.carried = this.left.get(thread) === load;
+				if (!this.carried) this.left.delete(thread);
+			} else if (pages !== this.pages) {
+				this.pages = pages;
+				this.carried = this.carried || this.differs;
+				this.start();
+			}
+			if (reading) {
+				if (this.base !== null) this.differs = reading !== this.base;
+				else if (this.candidate?.reading !== reading) this.candidate = {
+					reading,
+					at: this.now()
+				};
+				else if (this.now() - this.candidate.at >= liveTiming.settleMs) {
+					this.base = reading;
+					this.candidate = null;
+				}
+			}
+			return this.state(thread) !== before;
+		}
+		start() {
+			this.base = null;
+			this.candidate = null;
+			this.differs = false;
+		}
+		synced(thread) {
+			this.left.delete(thread);
+			if (thread !== this.thread) return;
+			this.start();
+			this.carried = false;
+		}
+		flag(thread, load) {
+			this.left.set(thread, load);
+			if (thread !== this.thread || load !== this.load) return;
+			this.start();
+			this.carried = true;
+		}
+		state(thread) {
+			if (thread !== this.thread) return "unknown";
+			if (this.carried || this.differs) return "changed";
+			return this.base === null ? "unknown" : "same";
+		}
+	};
+	function newSince(th, last) {
+		if (!th?.detailAt || !last) return null;
+		const messages = messagesOf(th);
+		if (!messages.length) return null;
+		const at = messages.findIndex((m) => m.id === last);
+		const fresh = at < 0 ? messages : messages.slice(at + 1);
+		return {
+			n: fresh.length,
+			more: at < 0 || th.gap && fresh.length > 0,
+			hers: fresh.some((m) => m.from === "her")
+		};
+	}
 	var instagram_exports = __exportAll({
 		ago: () => ago,
 		start: () => start$1,
@@ -3187,13 +3445,20 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 	var PROFILE_SHARE = .9;
 	var syncedKey = (threadId) => `ig.chatSynced.${threadId}`;
 	var whoKey = (threadId) => `ig.chatWho.${threadId}`;
+	var lastKey = (threadId) => `ig.chatLast.${threadId}`;
 	var addedKey = (origin, handle) => `ig.inRizzBot.${origin}.${handle.toLowerCase()}`;
 	var chatOfKey = (herId) => `ig.chatOf.${herId}`;
 	var SYNC_ON_LOAD = "ig.syncOnLoad";
 	var FRESH_MS = 15e3;
 	var CHAT_LOAD_MS = 2e4;
 	var KEEP_OPEN = "Keep this tab open until it finishes.";
-	var timing$1 = { importingRecheckMs: 2e4 };
+	var timing$1 = {
+		importingRecheckMs: 2e4,
+		watchMs: 1500,
+		noteMs: 5e3,
+		settleMs: 500,
+		settleMaxMs: 2500
+	};
 	var APP_NAMES = {
 		hinge: "Hinge",
 		tinder: "Tinder",
@@ -3249,6 +3514,11 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			return dropdown.pill(key, who, createApi(host).origin, extra, app);
 		}
 		const storyRuns = new Map();
+		const live = new LiveChat();
+		let pane = null;
+		let paneSought = 0;
+		let menuOpen = null;
+		const notes = new Map();
 		let profileSince = Date.now();
 		let refreshTimer = null;
 		const dm = new DmCapture();
@@ -3345,32 +3615,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				label: "Connect RizzBot",
 				onClick: () => openConnect(host, win.navigator.userAgent)
 			};
-			if (threadId) {
-				const who = host.get(whoKey(threadId), null);
-				if (who) {
-					const pill = draftsPill(`t:${threadId}`, {
-						ig_id: who.id,
-						ig_user: who.username
-					}, {
-						label: "Sync newest",
-						onClick: () => syncFromPage(threadId)
-					});
-					if (pill) return pill;
-				}
-				const synced = host.get(syncedKey(threadId), null);
-				if (typeof synced === "number") return {
-					kind: "pill",
-					ok: true,
-					label: `Synced ${ago(synced)}`,
-					title: "Press to sync the newest messages",
-					onClick: () => syncFromPage(threadId)
-				};
-				return {
-					kind: "pill",
-					label: "Sync chat to RizzBot",
-					onClick: () => syncFromPage(threadId)
-				};
-			}
+			if (threadId) return chatPill(threadId);
 			if (!username) return { kind: "hidden" };
 			const snap = capture.snapshot(username);
 			if (!snap) {
@@ -3429,6 +3674,138 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				label: `Add @${snap.user.username} to RizzBot`,
 				onClick: () => ask(username)
 			};
+		}
+		function behind(threadId) {
+			const last = host.get(lastKey(threadId), null);
+			return behindOf(newSince(dm.thread(threadId), typeof last === "string" ? last : null), live.state(threadId));
+		}
+		function chatPill(threadId) {
+			const origin = createApi(host).origin;
+			const key = `t:${threadId}`;
+			const sync = () => syncFromPage(threadId);
+			const who = host.get(whoKey(threadId), null);
+			const b = behind(threadId);
+			const plain = (p) => {
+				menuOpen = null;
+				return p;
+			};
+			if (who) {
+				const asked = {
+					ig_id: who.id,
+					ig_user: who.username
+				};
+				if ((b.kind === "new" && b.hers || drafts.expected(key)) && !dropdown.isOpen()) drafts.refresh(key, asked);
+				else {
+					const pill = draftsPill(key, asked, {
+						label: b.kind === "new" ? "Sync new messages" : "Sync newest",
+						onClick: sync,
+						alert: b.kind === "new"
+					});
+					if (pill) return plain(pill);
+				}
+			}
+			const slug = who?.slug ?? drafts.get(key)?.girl?.slug ?? null;
+			const page = slug ? `${origin}/chats/${encodeURIComponent(slug)}` : null;
+			const open = page ? { onClick: () => host.openTab(page) } : {};
+			const note = notes.get(threadId);
+			if (note && Date.now() < note.until && b.kind !== "new") return plain({
+				kind: "pill",
+				label: note.label,
+				ok: note.ok,
+				muted: note.muted,
+				...page ? { title: "Press to open her in RizzBot" } : {},
+				...open
+			});
+			if (who && b.kind !== "new" && drafts.drafting(key)) return plain({
+				kind: "pill",
+				label: "Drafting replies",
+				busy: true,
+				title: "RizzBot is drafting for her. Her drafts show here when they are ready. Press to open her in RizzBot.",
+				...open
+			});
+			if (typeof host.get(syncedKey(threadId), null) !== "number") return plain({
+				kind: "pill",
+				label: "Sync chat to RizzBot",
+				onClick: sync
+			});
+			const menu = {
+				open: menuOpen === threadId,
+				onToggle: () => {
+					menuOpen = menuOpen === threadId ? null : threadId;
+					refresh();
+				},
+				onMain: sync,
+				lines: [],
+				actions: [{
+					label: "Resync all",
+					onClick: () => {
+						menuOpen = null;
+						syncFromPage(threadId, true);
+					}
+				}],
+				openHref: page,
+				onCopy: () => false,
+				onSent: () => {},
+				onClose: () => {
+					menuOpen = null;
+					refresh();
+				}
+			};
+			if (b.kind === "new") return {
+				kind: "pill",
+				label: syncLabel(b),
+				title: "The chat changed since the last sync. Press to sync it.",
+				drop: menu
+			};
+			if (b.kind === "same") return {
+				kind: "pill",
+				ok: true,
+				label: "Synced",
+				title: "Nothing new since the last sync. Press to sync again.",
+				drop: menu
+			};
+			return {
+				kind: "pill",
+				label: syncLabel(b),
+				title: "Press to sync the newest messages.",
+				drop: menu
+			};
+		}
+		function watchChat() {
+			if (win.document.visibilityState === "hidden") return;
+			const threadId = threadFromPath(win.location.pathname);
+			if (!threadId || held) return;
+			const th = dm.thread(threadId);
+			if ((th?.detailAt ? live.tick(threadId, String(th.detailAt), th.pages, readingNow()) : false) || dm.version !== drawnVersion) {
+				drawnVersion = dm.version;
+				refresh();
+			}
+		}
+		let drawnVersion = -1;
+		function readingNow(search = false) {
+			if (!pane?.isConnected && (search || Date.now() - paneSought > 5e3)) {
+				paneSought = Date.now();
+				pane = chatPane(win);
+			}
+			if (pane && !pane.isConnected) pane = null;
+			if (!pane || !atNewest(pane, win.getComputedStyle(pane).flexDirection === "column-reverse")) return null;
+			return paneReading(pane) || null;
+		}
+		async function settledReading() {
+			let last = readingNow(true);
+			if (!pane) return null;
+			let since = Date.now();
+			const end = since + timing$1.settleMaxMs;
+			while (Date.now() < end) {
+				await sleep(Math.min(250, timing$1.settleMs));
+				const now = readingNow(true);
+				if (now !== last) {
+					last = now;
+					since = Date.now();
+				} else if (now && Date.now() - since >= timing$1.settleMs) return now;
+				else if (!now && !pane) return null;
+			}
+			return null;
 		}
 		function storyOwner(p) {
 			const idOf = (u) => capture.snapshot(u)?.user.id ?? null;
@@ -3641,6 +4018,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 		}
 		const release = () => {
 			held = false;
+			menuOpen = null;
 			refresh();
 		};
 		function ask(username) {
@@ -3936,9 +4314,11 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 		}
 		function syncFromPage(urlId, full = false, fromLoad = false) {
 			held = true;
+			menuOpen = null;
+			notes.delete(urlId);
 			const th = dm.thread(urlId);
 			const here = threadFromPath(win.location.pathname) === urlId;
-			if (!fromLoad && (!here || !th || th.gap || Date.now() - th.detailAt > FRESH_MS)) {
+			if (!fromLoad && (!here || !th || th.gap || Date.now() - th.detailAt > FRESH_MS || live.state(urlId) === "changed")) {
 				host.set(SYNC_ON_LOAD, {
 					key: urlId,
 					full,
@@ -4003,6 +4383,8 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			let partial = false;
 			let copy = null;
 			o.show("Reading your messages", .05);
+			const startReading = await settledReading();
+			const pagesBefore = dm.thread(urlId)?.pages ?? 0;
 			let rounds = 0;
 			let scrolled = null;
 			let left = false;
@@ -4068,21 +4450,34 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 			if (!answer) throw new ApiError("RizzBot answered something unexpected. Try again in a minute.", 200, body);
 			if (answer.kind === "saved") {
 				host.set(syncedKey(urlId), Date.now());
+				const newest = chat.messages[chat.messages.length - 1]?.id;
+				if (newest) host.set(lastKey(urlId), newest);
+				else host.del(lastKey(urlId));
 				host.set(whoKey(urlId), {
 					id: chat.her.id,
-					username: chat.her.username
+					username: chat.her.username,
+					slug: answer.slug
 				});
-				drafts.refresh(`t:${urlId}`, {
+				const asked = {
 					ig_id: chat.her.id,
 					ig_user: chat.her.username
-				}, true);
+				};
+				if (answer.added > 0) drafts.forget(`t:${urlId}`, asked);
+				if (answer.drafting) drafts.expect(`t:${urlId}`, asked);
+				else drafts.refresh(`t:${urlId}`, asked, true);
+			}
+			let moved = false;
+			if (startReading) {
+				await sleep(150);
+				moved = movedDuring(startReading, readingNow(true), (dm.thread(urlId)?.pages ?? 0) > pagesBefore);
 			}
 			return {
 				answer,
 				partial,
 				scanned: chat.messages.length,
 				truncated,
-				capped
+				capped,
+				moved
 			};
 		}
 		function showAnswer(a, urlId, read) {
@@ -4139,12 +4534,24 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				});
 			};
 			try {
-				const { answer, partial, truncated, capped } = await readAndSend(urlId, {
+				const { answer, partial, truncated, capped, moved } = await readAndSend(urlId, {
 					full,
 					show,
 					ctx,
 					stopped: () => stop
 				});
+				if (answer.kind === "saved" && !truncated && !capped) {
+					if (moved) live.flag(urlId, String(dm.thread(urlId)?.detailAt ?? ""));
+					else live.synced(urlId);
+					if (!answer.drafting) {
+						notes.set(urlId, {
+							...syncNote(answer),
+							until: Date.now() + timing$1.noteMs
+						});
+						win.setTimeout(refresh, timing$1.noteMs + 50);
+					}
+					return release();
+				}
 				showAnswer(answer, urlId, {
 					partial,
 					truncated,
@@ -4255,8 +4662,12 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				if (here && typeof pending.key === "string" && Date.now() - at < 6e4) syncWhenLoaded(here, pending.full === true, pending.key);
 			}
 			refresh();
+			win.setInterval(watchChat, timing$1.watchMs);
 			onUrlChange$1(win, () => {
 				profileSince = Date.now();
+				menuOpen = null;
+				pane = null;
+				paneSought = 0;
 				if (!panel.isWorking()) held = false;
 				refresh();
 				win.setTimeout(refresh, 6100);
