@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RizzBot Connect
 // @namespace    https://rizzbotproject.vercel.app
-// @version      1.21.0
+// @version      1.22.0
 // @author       rizzbotdev
 // @description  Bring girls into RizzBot from the sites you use in your browser. Instagram: add her from her profile, with your chat, and draft replies to the story or post you are looking at. Reads only what you can see; never likes, follows or opens a story for you. Tinder: a status badge on every match and chat, chats synced by themselves, and one-press import. Reads only what Tinder already loaded; never sends Tinder a request or presses its buttons.
 // @license      UNLICENSED
@@ -733,6 +733,8 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 .bub:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .bub svg { width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; }
 .why { font-size: 12px; color: #fca5a5; }
+.ghost { max-width: 100%; padding: 6px 12px; border: 1px dashed hsl(38 92% 60% / .65); border-radius: 16px 16px 6px 16px; color: hsl(38 92% 60%); font-size: 13px; line-height: 1.4; }
+.hwhy { font-size: 12px; line-height: 1.4; color: rgb(255 255 255 / .6); text-align: right; }
 .ib { width: 30px; height: 30px; border-radius: 9px; border: 0; display: grid; place-items: center; background: rgb(255 255 255 / .07); color: #d6d6dc; cursor: pointer; flex: none; transition: background .15s, color .15s; }
 .ib:hover:not(:disabled) { background: rgb(255 255 255 / .14); color: #fff; }
 .ib:disabled { cursor: default; }
@@ -1054,6 +1056,14 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				b.addEventListener("click", onClick);
 				return b;
 			};
+			if (d.hold) {
+				const row = el("div", "dl hold");
+				const bubbles = el("div", "bubbles");
+				bubbles.appendChild(el("span", "ghost", d.hold.title.toLowerCase()));
+				if (d.hold.why) bubbles.appendChild(el("div", "hwhy", d.hold.why));
+				row.appendChild(bubbles);
+				box.appendChild(row);
+			}
 			d.lines.forEach((line, i) => {
 				const row = el("div", `dl${line.state === "sent" ? " sent" : ""}`);
 				if (line.grade === "pending") {
@@ -1173,6 +1183,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 					d ? {
 						open: d.open,
 						lines: d.lines,
+						hold: d.hold ?? null,
 						note: d.note ?? null,
 						href: d.openHref,
 						extra: d.extra?.label ?? null
@@ -1604,6 +1615,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				}] : [];
 			});
 			const rt = d.replies_to;
+			const h = d.hold;
 			if (lines.length) drafts = {
 				id: str$3(d.id),
 				created_at: str$3(d.created_at) ?? "",
@@ -1611,6 +1623,10 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 				replies_to: rt && str$3(rt.kind) ? {
 					kind: str$3(rt.kind),
 					what: str$3(rt.what) ?? ""
+				} : null,
+				hold: h && str$3(h.title) ? {
+					title: str$3(h.title),
+					why: str$3(h.why) ?? ""
 				} : null,
 				grading: d.grading === true,
 				graded: d.graded === true || lines.some((l) => l.grade)
@@ -1757,6 +1773,7 @@ h3.atitle { font-size: 15px; line-height: 1.35; font-weight: 650; text-wrap: pre
 						...copied?.size ? { copied: [...copied] } : {}
 					};
 				}),
+				hold: d.hold ?? null,
 				note: d.grading && !d.lines.every((l) => l.grade) ? {
 					text: "grading",
 					busy: true
